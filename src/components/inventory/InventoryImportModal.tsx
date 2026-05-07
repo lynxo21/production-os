@@ -50,7 +50,7 @@ const TEMPLATE_EXAMPLE = [
 ].join("\n");
 
 function hasUnitData(row: ParsedRow): boolean {
-  return !!(row.serial_number || row.unit_id || row.purchase_date || row.purchase_price || row.vendor || row.condition);
+  return !!(row.serial_number || row.unit_id || row.purchase_date || row.purchase_price || row.vendor);
 }
 
 const overlayStyle: React.CSSProperties = {
@@ -128,7 +128,12 @@ export default function InventoryImportModal({ onClose, onImported }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rows }),
       });
-      const result: ImportResult = await res.json();
+      const json = await res.json();
+      if (!res.ok) {
+        setErrors([`Import failed: ${json.error || res.statusText}`]);
+        return;
+      }
+      const result: ImportResult = json;
       setImportResult(result);
       if (result.modelsCreated > 0 || result.modelsUpdated > 0) {
         const invRes = await fetch("/api/inventory");
@@ -136,8 +141,8 @@ export default function InventoryImportModal({ onClose, onImported }: Props) {
         if (Array.isArray(allItems)) onImported(allItems);
       }
       setStep("done");
-    } catch {
-      setErrors(["Import failed. Please try again."]);
+    } catch (err) {
+      setErrors([`Import failed: ${err instanceof Error ? err.message : String(err)}`]);
     } finally {
       setImporting(false);
     }

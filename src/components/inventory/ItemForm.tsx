@@ -33,6 +33,7 @@ export interface ItemFormData {
   trackedBySerial: boolean;
   isUnitContainer: boolean;
   primaryGroupId: string;
+  quantityOwned: string;
 }
 
 interface FlatGroup {
@@ -144,6 +145,7 @@ export default function ItemForm({ onClose, onSave, onDelete, initialData, initi
     trackedBySerial: initialData?.trackedBySerial || false,
     isUnitContainer: initialData?.isUnitContainer || false,
     primaryGroupId: initialData?.primaryGroupId || initialGroupId || '',
+    quantityOwned: initialData?.stock?.quantityOwned?.toString() || '1',
   });
 
   const [groups, setGroups] = useState<FlatGroup[]>([]);
@@ -257,6 +259,18 @@ export default function ItemForm({ onClose, onSave, onDelete, initialData, initi
           <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#444', margin: '20px 0 14px' }}>Tracking</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <Toggle value={f.trackedBySerial} onChange={v => set('trackedBySerial', v)} label="Track by Serial Number — each unit gets its own barcode" />
+            {!f.trackedBySerial && (
+              <Field label="Quantity Owned">
+                <input
+                  style={{ ...inputStyle, width: 120 }}
+                  type="number"
+                  min={0}
+                  value={f.quantityOwned}
+                  onChange={e => set('quantityOwned', e.target.value)}
+                  placeholder="1"
+                />
+              </Field>
+            )}
             <Toggle value={f.isUnitContainer} onChange={v => set('isUnitContainer', v)} label="Unit Container — can contain other units" />
             <Toggle value={f.trackRunningHours} onChange={v => set('trackRunningHours', v)} label="Track Running Hours" />
           </div>

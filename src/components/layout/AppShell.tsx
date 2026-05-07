@@ -23,6 +23,7 @@ interface Group {
   name: string;
   parentId: string | null;
   sortOrder: number;
+  itemCount?: number;
 }
 
 interface GroupNode extends Group {
@@ -175,8 +176,11 @@ function GroupNodeItem({
             }}
           />
         ) : (
-          <span style={{ flex: 1, fontSize: 13, fontWeight: isSelected ? 600 : 400 }}>
+          <span style={{ flex: 1, fontSize: 13, fontWeight: isSelected ? 600 : 400, display: "flex", alignItems: "center", gap: 4 }}>
             {node.name}
+            {node.itemCount != null && node.itemCount > 0 && (
+              <span style={{ fontSize: 10, color: "#555", marginLeft: 4 }}>{node.itemCount}</span>
+            )}
           </span>
         )}
 

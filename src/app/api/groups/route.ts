@@ -9,8 +9,29 @@ export async function GET() {
     const groups = await prisma.group.findMany({
       where: { organizationId: orgId },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      include: {
+        primaryItems: {
+          where: { active: true },
+          select: {
+            trackedBySerial: true,
+            _count: { select: { units: true } },
+            stock: { select: { quantityOwned: true } },
+          },
+        },
+      },
     });
-    return NextResponse.json(groups);
+
+    const result = groups.map(g => ({
+      id: g.id,
+      name: g.name,
+      parentId: g.parentId,
+      sortOrder: g.sortOrder,
+      itemCount: g.primaryItems.reduce((sum, item) => {
+        if (item.trackedBySerial) return sum + item._count.units;
+        return sum + (item.stock?.quantityOwned ?? 0);
+      }, 0),
+    }));
+    return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }

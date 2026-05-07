@@ -9,8 +9,16 @@ export async function GET() {
     const items = await prisma.item.findMany({
       where: { organizationId: orgId },
       orderBy: { createdAt: "desc" },
+      include: {
+        _count: { select: { units: true } },
+        stock: { select: { quantityOwned: true } },
+      },
     });
-    return NextResponse.json(items);
+    const result = items.map(item => ({
+      ...item,
+      qty: item.trackedBySerial ? item._count.units : (item.stock?.quantityOwned ?? 0),
+    }));
+    return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch items" }, { status: 500 });
   }
@@ -45,7 +53,12 @@ export async function POST(req: NextRequest) {
         primaryGroupId: body.primaryGroupId || null,
       },
     });
-    return NextResponse.json(item);
+    if (!body.trackedBySerial) {
+      await prisma.itemStock.create({
+        data: { itemId: item.id, quantityOwned: parseInt(body.quantityOwned) || 0, quantityAvailable: parseInt(body.quantityOwned) || 0 },
+      });
+    }
+    return NextResponse.json({ ...item, qty: body.trackedBySerial ? 0 : (parseInt(body.quantityOwned) || 0) });
   } catch (error) {
     console.error("POST /api/inventory error:", error);
     return NextResponse.json({ error: String(error) }, { status: 500 });
@@ -81,7 +94,20 @@ export async function PUT(req: NextRequest) {
         primaryGroupId: body.primaryGroupId || null,
       },
     });
-    return NextResponse.json(item);
+    let qty = 0;
+    if (!body.trackedBySerial) {
+      const qtyOwned = parseInt(body.quantityOwned) || 0;
+      await prisma.itemStock.upsert({
+        where: { itemId: body.id },
+        update: { quantityOwned: qtyOwned, quantityAvailable: qtyOwned },
+        create: { itemId: body.id, quantityOwned: qtyOwned, quantityAvailable: qtyOwned },
+      });
+      qty = qtyOwned;
+    } else {
+      const unitCount = await prisma.itemUnit.count({ where: { itemId: body.id } });
+      qty = unitCount;
+    }
+    return NextResponse.json({ ...item, qty });
   } catch (error) {
     console.error("PUT /api/inventory error:", error);
     return NextResponse.json({ error: String(error) }, { status: 500 });

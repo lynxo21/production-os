@@ -216,6 +216,7 @@ function InventoryPageInner() {
                     { label: "Manufacturer",key: "manufacturer",    align: "left"  },
                     { label: "Day Rate",    key: "standardDayRate", align: "right" },
                     { label: "Replacement", key: "replacementCost", align: "right" },
+                    { label: "QTY",         key: "qty",             align: "right" },
                   ] as const).map(({ label, key, align }) => {
                     const active = sortKey === key;
                     return (
@@ -254,6 +255,14 @@ function InventoryPageInner() {
                     </td>
                     <td style={{ padding: "14px 20px", textAlign: "right", fontFamily: "monospace", fontSize: 13, color: "#666" }}>
                       {item.replacementCost ? `$${Number(item.replacementCost).toLocaleString()}` : "—"}
+                    </td>
+                    <td style={{ padding: "14px 20px", textAlign: "right", fontFamily: "monospace", fontSize: 13 }}>
+                      {item.trackedBySerial
+                        ? <span style={{ color: "#e8a045" }}>{item.qty ?? 0} units</span>
+                        : item.qty > 0
+                          ? <span style={{ color: "#4a9eff" }}>×{item.qty}</span>
+                          : <span style={{ color: "#333" }}>—</span>
+                      }
                     </td>
                   </tr>
                 ))}
