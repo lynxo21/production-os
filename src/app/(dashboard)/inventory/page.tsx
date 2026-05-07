@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ItemForm from "@/components/inventory/ItemForm";
+import InventoryImportModal from "@/components/inventory/InventoryImportModal";
 
 interface ContextMenu {
   x: number;
@@ -40,6 +41,7 @@ function InventoryPageInner() {
   const searchParams = useSearchParams();
   const selectedGroup = searchParams.get("group");
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editItem, setEditItem] = useState<any | null>(null);
   const [items, setItems] = useState<any[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -153,12 +155,22 @@ function InventoryPageInner() {
             {filtered.length} {filtered.length === 1 ? "item" : "items"}{selectedGroup ? " in this group" : " in your gear catalog"}
           </p>
         </div>
-        <button
-          onClick={() => { setEditItem(null); setShowForm(true); }}
-          style={{ background: "#e8a045", color: "#000", border: "none", fontWeight: 700, fontSize: 13, padding: "10px 20px", borderRadius: 6, cursor: "pointer" }}
-        >
-          + Add Item
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={() => setShowImport(true)}
+            style={{ background: "#1e1e1e", border: "1px solid #2a2a2a", color: "#ccc", fontWeight: 600, fontSize: 13, padding: "10px 18px", borderRadius: 6, cursor: "pointer" }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = "#444"; e.currentTarget.style.color = "#f0f0f0"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = "#2a2a2a"; e.currentTarget.style.color = "#ccc"; }}
+          >
+            Import
+          </button>
+          <button
+            onClick={() => { setEditItem(null); setShowForm(true); }}
+            style={{ background: "#e8a045", color: "#000", border: "none", fontWeight: 700, fontSize: 13, padding: "10px 20px", borderRadius: 6, cursor: "pointer" }}
+          >
+            + Add Item
+          </button>
+        </div>
       </div>
 
       {/* Breadcrumb */}
@@ -299,6 +311,14 @@ function InventoryPageInner() {
             Delete
           </button>
         </div>
+      )}
+
+      {/* Import Modal */}
+      {showImport && (
+        <InventoryImportModal
+          onClose={() => setShowImport(false)}
+          onImported={(newItems) => setItems(prev => [...newItems, ...prev])}
+        />
       )}
 
       {/* Form */}

@@ -8,11 +8,41 @@ export async function POST(
   const { id: itemId } = await params;
   try {
     const body = await req.json();
+
+    let barcodeValue: string | null = body.unitId || null;
+
+    if (!barcodeValue) {
+      // Auto-generate Unit ID
+      const item = await prisma.item.findUnique({
+        where: { id: itemId },
+        select: { organizationId: true },
+      });
+      if (item) {
+        const org = await prisma.organization.findUnique({
+          where: { id: item.organizationId },
+          select: { settings: true },
+        });
+        const prefix = (org?.settings as any)?.unitIdPrefix || "UNIT";
+        const existingUnits = await prisma.itemUnit.findMany({
+          where: {
+            item: { organizationId: item.organizationId },
+            barcode: { startsWith: `${prefix}-` },
+          },
+          select: { barcode: true },
+        });
+        const nums = existingUnits
+          .map(u => parseInt(u.barcode!.slice(prefix.length + 1)))
+          .filter(n => !isNaN(n) && n > 0);
+        const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+        barcodeValue = `${prefix}-${String(next).padStart(5, "0")}`;
+      }
+    }
+
     const unit = await prisma.itemUnit.create({
       data: {
         itemId,
         serialNumber: body.serialNumber || null,
-        barcode: body.barcode || null,
+        barcode: barcodeValue,
         condition: body.condition || null,
         purchaseDate: body.purchaseDate ? new Date(body.purchaseDate) : null,
         purchasePrice: body.purchasePrice != null && body.purchasePrice !== "" ? parseFloat(body.purchasePrice) : null,
@@ -37,10 +67,10 @@ export async function PUT(
   try {
     const body = await req.json();
     const unit = await prisma.itemUnit.update({
-      where: { id: body.unitId },
+      where: { id: body.id },
       data: {
         serialNumber: body.serialNumber || null,
-        barcode: body.barcode || null,
+        barcode: body.unitId || null,
         condition: body.condition || null,
         purchaseDate: body.purchaseDate ? new Date(body.purchaseDate) : null,
         purchasePrice: body.purchasePrice != null && body.purchasePrice !== "" ? parseFloat(body.purchasePrice) : null,

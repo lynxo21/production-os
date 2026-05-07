@@ -273,11 +273,18 @@ export default function SettingsPage() {
   const [jobNumSaving, setJobNumSaving] = useState(false);
   const [jobNumSaved, setJobNumSaved] = useState(false);
 
+  // Unit ID Format settings
+  const [savedUnitIdPrefix, setSavedUnitIdPrefix] = useState<string | null>(null);
+  const [unitIdSaved, setUnitIdSaved] = useState(false);
+
   useEffect(() => {
     fetch("/api/settings/tiers").then(r => r.json()).then(data => setTiers(Array.isArray(data) ? data : []));
     fetch("/api/settings/roles").then(r => r.json()).then(data => setRoles(Array.isArray(data) ? data : []));
     fetch("/api/settings/org").then(r => r.json()).then(data => {
-      if (data && !data.error) setOrgSettings((prev: any) => ({ ...prev, ...data }));
+      if (data && !data.error) {
+        setOrgSettings((prev: any) => ({ ...prev, ...data }));
+        setSavedUnitIdPrefix(data.unitIdPrefix || null);
+      }
     });
   }, []);
 
@@ -357,6 +364,38 @@ export default function SettingsPage() {
     setTimeout(() => setJobNumSaved(false), 2000);
   };
 
+  // ── Unit ID Format handler ──
+  const handleSaveUnitIdSettings = async () => {
+    const newPrefix = orgSettings.unitIdPrefix || "UNIT";
+    const oldPrefix = savedUnitIdPrefix || "UNIT";
+    const prefixChanged = newPrefix !== oldPrefix;
+
+    if (prefixChanged) {
+      const confirmed = window.confirm(
+        `This will update all existing unit IDs. Change ${oldPrefix}-##### to ${newPrefix}-#####?`
+      );
+      if (!confirmed) return;
+    }
+
+    await fetch("/api/settings/org", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(orgSettings),
+    });
+
+    if (prefixChanged) {
+      await fetch("/api/inventory/units/reprefix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldPrefix, newPrefix }),
+      });
+    }
+
+    setSavedUnitIdPrefix(newPrefix);
+    setUnitIdSaved(true);
+    setTimeout(() => setUnitIdSaved(false), 2000);
+  };
+
   // Group roles by department
   const rolesByDept = roles.reduce<Record<string, any[]>>((acc, r) => {
     const dept = r.department || "Uncategorized";
@@ -424,6 +463,42 @@ export default function SettingsPage() {
               {jobNumSaved ? "Saved" : jobNumSaving ? "Saving..." : "Save Changes"}
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* ── Unit ID Format ── */}
+      <div style={{ marginBottom: 48 }}>
+        <SectionHeader
+          title="Unit ID Format"
+          description="Auto-generated IDs for inventory units."
+        />
+        <div style={{ background: "#111", border: "1px solid #1e1e1e", borderRadius: 8, padding: "20px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+          <p style={{ fontSize: 13, color: "#555", margin: 0 }}>
+            Auto-generated IDs for inventory units. Format: [PREFIX]-00001
+          </p>
+          <Field label="Prefix">
+            <input
+              style={{ ...inputStyle, width: 160 }}
+              value={orgSettings.unitIdPrefix || "UNIT"}
+              onChange={e => setOrgSettings((s: any) => ({ ...s, unitIdPrefix: e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "") }))}
+              placeholder="e.g. AN"
+              maxLength={10}
+            />
+          </Field>
+          <div style={{ fontSize: 12, color: "#444", fontFamily: "monospace" }}>
+            Preview: {(orgSettings.unitIdPrefix || "UNIT")}-00001, {(orgSettings.unitIdPrefix || "UNIT")}-00002, {(orgSettings.unitIdPrefix || "UNIT")}-00003
+          </div>
+          {orgSettings.unitIdPrefix && orgSettings.unitIdPrefix !== (savedUnitIdPrefix || "UNIT") && (
+            <p style={{ fontSize: 12, color: "#e8a045", margin: 0 }}>
+              ⚠ Changing the prefix will update all existing unit IDs for your org.
+            </p>
+          )}
+          <button
+            onClick={handleSaveUnitIdSettings}
+            style={{ alignSelf: "flex-start", background: "#e8a045", color: "#000", border: "none", borderRadius: 4, padding: "9px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+          >
+            {unitIdSaved ? "Saved" : "Save Changes"}
+          </button>
         </div>
       </div>
 

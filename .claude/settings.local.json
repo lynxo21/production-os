@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pkill -f \"next dev\")",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/login)",
+      "Bash(git push *)",
+      "Bash(curl -s -X POST http://localhost:3000/api/inventory -H 'Content-Type: application/json' -d '{\"name\":\"Test Item\"}')",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(node -e \"require\\('papaparse'\\); console.log\\('papaparse ok'\\)\")",
+      "Bash(node -e \"require\\('xlsx'\\); console.log\\('xlsx ok'\\)\")",
+      "Bash(npm install *)"
+    ]
+  }
+}

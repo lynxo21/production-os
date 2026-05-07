@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, Plus } from "lucide-react";
 import ClientForm from "@/components/clients/ClientForm";
+import ClientsImportModal from "@/components/clients/ClientsImportModal";
 
 interface ContextMenu {
   x: number;
@@ -14,6 +15,7 @@ interface ContextMenu {
 export default function ClientsPage() {
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editClient, setEditClient] = useState<any | null>(null);
   const [clients, setClients] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,12 +96,22 @@ export default function ClientsPage() {
             {clients.length} {clients.length === 1 ? "client" : "clients"}
           </p>
         </div>
-        <button
-          onClick={() => { setEditClient(null); setShowForm(true); }}
-          style={{ display: "flex", alignItems: "center", gap: 8, background: "#e8a045", color: "#000", border: "none", fontWeight: 700, fontSize: 13, padding: "10px 20px", borderRadius: 6, cursor: "pointer" }}
-        >
-          <Plus size={15} /> New Client
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={() => setShowImport(true)}
+            style={{ background: "#1e1e1e", border: "1px solid #2a2a2a", color: "#ccc", fontWeight: 600, fontSize: 13, padding: "10px 18px", borderRadius: 6, cursor: "pointer" }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = "#444"; e.currentTarget.style.color = "#f0f0f0"; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = "#2a2a2a"; e.currentTarget.style.color = "#ccc"; }}
+          >
+            Import
+          </button>
+          <button
+            onClick={() => { setEditClient(null); setShowForm(true); }}
+            style={{ display: "flex", alignItems: "center", gap: 8, background: "#e8a045", color: "#000", border: "none", fontWeight: 700, fontSize: 13, padding: "10px 20px", borderRadius: 6, cursor: "pointer" }}
+          >
+            <Plus size={15} /> New Client
+          </button>
+        </div>
       </div>
 
       {/* Content */}
@@ -184,6 +196,14 @@ export default function ClientsPage() {
             Delete
           </button>
         </div>
+      )}
+
+      {/* Import Modal */}
+      {showImport && (
+        <ClientsImportModal
+          onClose={() => setShowImport(false)}
+          onImported={(newClients) => setClients(prev => [...newClients, ...prev])}
+        />
       )}
 
       {/* Form */}

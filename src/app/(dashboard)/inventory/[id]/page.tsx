@@ -31,7 +31,7 @@ function MetaItem({ label, value, mono, amber }: { label: string; value: string;
 
 const CONDITIONS = ["Mint", "Excellent", "Good", "Fair", "Poor"] as const;
 
-const EMPTY_UNIT_FORM = { serialNumber: "", barcode: "", condition: "", purchaseDate: "", purchasePrice: "", vendor: "", runningHours: "0", status: "AVAILABLE", notes: "" };
+const EMPTY_UNIT_FORM = { serialNumber: "", unitId: "", condition: "", purchaseDate: "", purchasePrice: "", vendor: "", runningHours: "0", status: "AVAILABLE", notes: "" };
 
 export default function InventoryItemPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -73,7 +73,7 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
     setEditUnit(unit);
     setUnitForm({
       serialNumber: unit.serialNumber || "",
-      barcode: unit.barcode || "",
+      unitId: unit.barcode || "",
       condition: unit.condition || "",
       status: unit.status || "AVAILABLE",
       purchaseDate: unit.purchaseDate ? new Date(unit.purchaseDate).toISOString().slice(0, 10) : "",
@@ -89,7 +89,7 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
   const handleSaveUnit = async () => {
     const basePayload = {
       serialNumber: unitForm.serialNumber || null,
-      barcode: unitForm.barcode || null,
+      unitId: unitForm.unitId || null,
       condition: unitForm.condition || null,
       purchaseDate: unitForm.purchaseDate || null,
       purchasePrice: unitForm.purchasePrice !== "" ? unitForm.purchasePrice : null,
@@ -102,7 +102,7 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
       const res = await fetch(`/api/inventory/${id}/units`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ unitId: editUnit.id, ...basePayload, status: unitForm.status }),
+        body: JSON.stringify({ id: editUnit.id, ...basePayload, status: unitForm.status }),
       });
       if (!res.ok) { alert("Failed to save unit."); return; }
       const updated = await res.json();
@@ -275,7 +275,7 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
                 <thead>
                   <tr style={{ background: "#111", borderBottom: "1px solid #242424" }}>
                     <th style={{ textAlign: "left",  padding: "10px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555" }}>Serial #</th>
-                    <th style={{ textAlign: "left",  padding: "10px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555" }}>Barcode</th>
+                    <th style={{ textAlign: "left",  padding: "10px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555" }}>Unit ID</th>
                     <th style={{ textAlign: "left",  padding: "10px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555" }}>Status</th>
                     <th style={{ textAlign: "left",  padding: "10px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555" }}>Condition</th>
                     <th style={{ textAlign: "left",  padding: "10px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555" }}>Purchase Date</th>
@@ -378,8 +378,8 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
                   <input style={inputStyle} value={unitForm.serialNumber} onChange={e => setU("serialNumber", e.target.value)} placeholder="e.g. SN-001234" autoFocus />
                 </div>
                 <div>
-                  <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#555", display: "block", marginBottom: 6 }}>Barcode</label>
-                  <input style={inputStyle} value={unitForm.barcode} onChange={e => setU("barcode", e.target.value)} placeholder="e.g. 123456789" />
+                  <label style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#555", display: "block", marginBottom: 6 }}>Unit ID</label>
+                  <input style={inputStyle} value={unitForm.unitId} onChange={e => setU("unitId", e.target.value)} placeholder="Auto-generated if blank" />
                 </div>
               </div>
 
