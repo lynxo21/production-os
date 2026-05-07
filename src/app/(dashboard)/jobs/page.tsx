@@ -5,6 +5,15 @@ import { useRouter } from "next/navigation";
 import { Briefcase, Plus } from "lucide-react";
 import JobForm from "@/components/jobs/JobForm";
 
+const COL_DEFS_JOBS = [
+  { key: "name",      label: "Job",      hideable: false },
+  { key: "client",    label: "Client",   hideable: true  },
+  { key: "status",    label: "Status",   hideable: true  },
+  { key: "startDate", label: "Date",     hideable: true  },
+  { key: "shootDays", label: "Days",     hideable: true  },
+  { key: "location",  label: "Location", hideable: true  },
+] as const;
+
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "Draft", QUOTED: "Quoted", CONFIRMED: "Confirmed",
   IN_PROGRESS: "In Progress", WRAPPED: "Wrapped", INVOICED: "Invoiced",
@@ -32,6 +41,30 @@ export default function JobsPage() {
   const [sortKey, setSortKey] = useState("createdAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
+  const [colMenuOpen, setColMenuOpen] = useState(false);
+  const colMenuRef = useRef<HTMLDivElement>(null);
+
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set(COL_DEFS_JOBS.map(c => c.key));
+    try {
+      const saved = localStorage.getItem("cols_jobs");
+      if (saved) {
+        const parsed: string[] = JSON.parse(saved);
+        return new Set(parsed);
+      }
+    } catch {}
+    return new Set(COL_DEFS_JOBS.map(c => c.key));
+  });
+
+  const toggleCol = (key: string) => {
+    setVisibleCols(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      localStorage.setItem("cols_jobs", JSON.stringify([...next]));
+      return next;
+    });
+  };
+
   const handleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortKey(key); setSortDir("asc"); }
@@ -58,6 +91,9 @@ export default function JobsPage() {
     const handler = (e: MouseEvent) => {
       if (contextRef.current && !contextRef.current.contains(e.target as Node)) {
         setContextMenu(null);
+      }
+      if (colMenuRef.current && !colMenuRef.current.contains(e.target as Node)) {
+        setColMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -128,6 +164,33 @@ export default function JobsPage() {
         </div>
       ) : (
         <div style={{ background: "#161616", border: "1px solid #242424", borderRadius: 8, overflow: "hidden" }}>
+          {/* Table toolbar */}
+          <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 12px", borderBottom: "1px solid #1e1e1e", position: "relative" }} ref={colMenuRef}>
+            <button
+              onClick={() => setColMenuOpen(v => !v)}
+              style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "1px solid #2a2a2a", color: colMenuOpen ? "#f0f0f0" : "#555", fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", padding: "5px 10px", borderRadius: 4, cursor: "pointer", fontFamily: "inherit" }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = "#444"; e.currentTarget.style.color = "#f0f0f0"; }}
+              onMouseLeave={e => { if (!colMenuOpen) { e.currentTarget.style.borderColor = "#2a2a2a"; e.currentTarget.style.color = "#555"; } }}
+            >
+              Columns
+            </button>
+            {colMenuOpen && (
+              <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 12, background: "#1e1e1e", border: "1px solid #333", borderRadius: 6, zIndex: 200, minWidth: 180, boxShadow: "0 8px 24px rgba(0,0,0,0.5)", padding: "6px 0" }}>
+                {COL_DEFS_JOBS.map(col => (
+                  <label key={col.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 14px", cursor: col.hideable ? "pointer" : "default", opacity: col.hideable ? 1 : 0.4 }}>
+                    <input
+                      type="checkbox"
+                      checked={visibleCols.has(col.key)}
+                      disabled={!col.hideable}
+                      onChange={() => col.hideable && toggleCol(col.key)}
+                      style={{ accentColor: "#e8a045", width: 13, height: 13 }}
+                    />
+                    <span style={{ fontSize: 13, color: "#ccc" }}>{col.label}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#111", borderBottom: "1px solid #242424" }}>
@@ -139,6 +202,7 @@ export default function JobsPage() {
                   { label: "Days",     key: "shootDays", align: "left" },
                   { label: "Location", key: "location",  align: "left" },
                 ] as const).map(({ label, key, align }) => {
+                  if (key !== "name" && !visibleCols.has(key)) return null;
                   const active = sortKey === key;
                   return (
                     <th key={key} onClick={() => handleSort(key)} style={{ textAlign: align, padding: "12px 20px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: active ? "#ccc" : "#555", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}>
@@ -162,30 +226,40 @@ export default function JobsPage() {
                     <div style={{ fontWeight: 600, fontSize: 14, color: "#f0f0f0" }}>{job.name}</div>
                     {job.jobNumber && <div style={{ fontSize: 12, color: "#555", marginTop: 2 }}>{job.jobNumber}</div>}
                   </td>
-                  <td style={{ padding: "14px 20px", fontSize: 13, color: "#666" }}>
-                    {job.client?.name || "—"}
-                  </td>
-                  <td style={{ padding: "14px 20px" }}>
-                    <span style={{
-                      fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 4,
-                      letterSpacing: "0.06em", textTransform: "uppercase",
-                      background: STATUS_COLORS[job.status]?.bg || "#33333322",
-                      color: STATUS_COLORS[job.status]?.color || "#888",
-                    }}>
-                      {STATUS_LABELS[job.status] || job.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: "14px 20px", fontSize: 13, color: "#666" }}>
-                    {job.startDate ? (
-                      <span>{fmtDate(job.startDate)}{job.endDate ? ` → ${fmtDate(job.endDate)}` : ""}</span>
-                    ) : "—"}
-                  </td>
-                  <td style={{ padding: "14px 20px", fontSize: 13, color: "#666", fontFamily: "monospace" }}>
-                    {job.shootDays ? `${job.shootDays}d` : "—"}
-                  </td>
-                  <td style={{ padding: "14px 20px", fontSize: 13, color: "#666" }}>
-                    {job.location || "—"}
-                  </td>
+                  {visibleCols.has("client") && (
+                    <td style={{ padding: "14px 20px", fontSize: 13, color: "#666" }}>
+                      {job.client?.name || "—"}
+                    </td>
+                  )}
+                  {visibleCols.has("status") && (
+                    <td style={{ padding: "14px 20px" }}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 4,
+                        letterSpacing: "0.06em", textTransform: "uppercase",
+                        background: STATUS_COLORS[job.status]?.bg || "#33333322",
+                        color: STATUS_COLORS[job.status]?.color || "#888",
+                      }}>
+                        {STATUS_LABELS[job.status] || job.status}
+                      </span>
+                    </td>
+                  )}
+                  {visibleCols.has("startDate") && (
+                    <td style={{ padding: "14px 20px", fontSize: 13, color: "#666" }}>
+                      {job.startDate ? (
+                        <span>{fmtDate(job.startDate)}{job.endDate ? ` → ${fmtDate(job.endDate)}` : ""}</span>
+                      ) : "—"}
+                    </td>
+                  )}
+                  {visibleCols.has("shootDays") && (
+                    <td style={{ padding: "14px 20px", fontSize: 13, color: "#666", fontFamily: "monospace" }}>
+                      {job.shootDays ? `${job.shootDays}d` : "—"}
+                    </td>
+                  )}
+                  {visibleCols.has("location") && (
+                    <td style={{ padding: "14px 20px", fontSize: 13, color: "#666" }}>
+                      {job.location || "—"}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

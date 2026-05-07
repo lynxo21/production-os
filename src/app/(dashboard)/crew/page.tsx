@@ -4,6 +4,16 @@ import { useState, useEffect, useRef } from "react";
 import { Users, Plus } from "lucide-react";
 import CrewForm from "@/components/crew/CrewForm";
 
+const COL_DEFS_CREW = [
+  { key: "name",        label: "Name",         hideable: false },
+  { key: "type",        label: "Type",         hideable: true  },
+  { key: "primaryRole", label: "Primary Role", hideable: true  },
+  { key: "otherRoles",  label: "Other Roles",  hideable: true  },
+  { key: "tierFloor",   label: "Min. Budget",  hideable: true  },
+  { key: "location",    label: "Location",     hideable: true  },
+  { key: "experience",  label: "Experience",   hideable: true  },
+] as const;
+
 interface ContextMenu {
   x: number;
   y: number;
@@ -20,6 +30,30 @@ export default function CrewPage() {
   const contextRef = useRef<HTMLDivElement>(null);
   const [sortKey, setSortKey] = useState("lastName");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const [colMenuOpen, setColMenuOpen] = useState(false);
+  const colMenuRef = useRef<HTMLDivElement>(null);
+
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set(COL_DEFS_CREW.map(c => c.key));
+    try {
+      const saved = localStorage.getItem("cols_crew");
+      if (saved) {
+        const parsed: string[] = JSON.parse(saved);
+        return new Set(parsed);
+      }
+    } catch {}
+    return new Set(COL_DEFS_CREW.map(c => c.key));
+  });
+
+  const toggleCol = (key: string) => {
+    setVisibleCols(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      localStorage.setItem("cols_crew", JSON.stringify([...next]));
+      return next;
+    });
+  };
 
   const handleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -44,11 +78,14 @@ export default function CrewPage() {
       });
   }, []);
 
-  // Close context menu on outside click
+  // Close context menu and col menu on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (contextRef.current && !contextRef.current.contains(e.target as Node)) {
         setContextMenu(null);
+      }
+      if (colMenuRef.current && !colMenuRef.current.contains(e.target as Node)) {
+        setColMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -153,21 +190,49 @@ export default function CrewPage() {
         </div>
       ) : (
         <div style={{ background: "#161616", border: "1px solid #242424", borderRadius: 8, overflow: "hidden" }}>
+          {/* Table toolbar */}
+          <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 12px", borderBottom: "1px solid #1e1e1e", position: "relative" }} ref={colMenuRef}>
+            <button
+              onClick={() => setColMenuOpen(v => !v)}
+              style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "1px solid #2a2a2a", color: colMenuOpen ? "#f0f0f0" : "#555", fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", padding: "5px 10px", borderRadius: 4, cursor: "pointer", fontFamily: "inherit" }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = "#444"; e.currentTarget.style.color = "#f0f0f0"; }}
+              onMouseLeave={e => { if (!colMenuOpen) { e.currentTarget.style.borderColor = "#2a2a2a"; e.currentTarget.style.color = "#555"; } }}
+            >
+              Columns
+            </button>
+            {colMenuOpen && (
+              <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 12, background: "#1e1e1e", border: "1px solid #333", borderRadius: 6, zIndex: 200, minWidth: 180, boxShadow: "0 8px 24px rgba(0,0,0,0.5)", padding: "6px 0" }}>
+                {COL_DEFS_CREW.map(col => (
+                  <label key={col.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 14px", cursor: col.hideable ? "pointer" : "default", opacity: col.hideable ? 1 : 0.4 }}>
+                    <input
+                      type="checkbox"
+                      checked={visibleCols.has(col.key)}
+                      disabled={!col.hideable}
+                      onChange={() => col.hideable && toggleCol(col.key)}
+                      style={{ accentColor: "#e8a045", width: 13, height: 13 }}
+                    />
+                    <span style={{ fontSize: 13, color: "#ccc" }}>{col.label}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ background: "#111", borderBottom: "1px solid #242424" }}>
                 {([
-                  { label: "Name",        key: "name",        align: "left" },
-                  { label: "Type",        key: "type",        align: "left" },
-                  { label: "Primary Role",key: "primaryRole", align: "left" },
-                  { label: "Other Roles", key: null,          align: "left" },
-                  { label: "Min. Budget", key: "tierFloor",   align: "left" },
-                  { label: "Location",    key: "location",    align: "left" },
-                  { label: "Experience",  key: null,          align: "left" },
-                ] as const).map(({ label, key, align }) => {
-                  const active = !!key && sortKey === key;
+                  { label: "Name",         key: "name",        sortKey: "name",        align: "left" },
+                  { label: "Type",         key: "type",        sortKey: "type",        align: "left" },
+                  { label: "Primary Role", key: "primaryRole", sortKey: "primaryRole", align: "left" },
+                  { label: "Other Roles",  key: "otherRoles",  sortKey: null,          align: "left" },
+                  { label: "Min. Budget",  key: "tierFloor",   sortKey: "tierFloor",   align: "left" },
+                  { label: "Location",     key: "location",    sortKey: "location",    align: "left" },
+                  { label: "Experience",   key: "experience",  sortKey: null,          align: "left" },
+                ] as const).map(({ label, key, sortKey: sk, align }) => {
+                  if (key !== "name" && !visibleCols.has(key)) return null;
+                  const active = !!sk && sortKey === sk;
                   return (
-                    <th key={label} onClick={() => key && handleSort(key)} style={{ textAlign: align, padding: "12px 20px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: active ? "#ccc" : "#555", cursor: key ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
+                    <th key={key} onClick={() => sk && handleSort(sk)} style={{ textAlign: align, padding: "12px 20px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: active ? "#ccc" : "#555", cursor: sk ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
                       {label}{active ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
                     </th>
                   );
@@ -192,46 +257,58 @@ export default function CrewPage() {
                       {member.firstName} {member.lastName}
                     </div>
                   </td>
-                  <td style={{ padding: "14px 20px" }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: member.type === "IN_HOUSE" ? "#e8a04520" : "#5b9cf620", color: member.type === "IN_HOUSE" ? "#e8a045" : "#5b9cf6", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      {member.type === "IN_HOUSE" ? "In House" : "Freelance"}
-                    </span>
-                  </td>
-                  <td style={{ padding: "14px 20px" }}>
-                    <span style={{ fontSize: 13, color: "#e8a045", fontWeight: 500 }}>
-                      {primaryRole(member) || "—"}
-                    </span>
-                  </td>
-                  <td style={{ padding: "14px 20px" }}>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {otherRoles(member).length === 0
-                        ? <span style={{ color: "#444", fontSize: 13 }}>—</span>
-                        : otherRoles(member).map((r: string) => (
-                          <span key={r} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "#222", color: "#888" }}>{r}</span>
-                        ))}
-                    </div>
-                  </td>
-                  <td style={{ padding: "14px 20px" }}>
-                    {member.tierFloor
-                      ? <span style={{ fontSize: 12, fontWeight: 700, color: "#e8a045", fontFamily: "monospace", background: "#e8a04515", padding: "3px 8px", borderRadius: 4 }}>T{member.tierFloor}</span>
-                      : <span style={{ color: "#333", fontSize: 13 }}>—</span>}
-                  </td>
-                  <td style={{ padding: "14px 20px", fontSize: 13, color: "#666" }}>
-                    {member.location || "—"}
-                  </td>
-                  <td style={{ padding: "14px 20px" }}>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      {member.workedWithBefore && (
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: "#5cba7d20", color: "#5cba7d", letterSpacing: "0.06em", textTransform: "uppercase" }}>Worked</span>
-                      )}
-                      {member.hiredBefore && (
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: "#5b9cf620", color: "#5b9cf6", letterSpacing: "0.06em", textTransform: "uppercase" }}>Hired</span>
-                      )}
-                      {!member.workedWithBefore && !member.hiredBefore && (
-                        <span style={{ color: "#333", fontSize: 13 }}>—</span>
-                      )}
-                    </div>
-                  </td>
+                  {visibleCols.has("type") && (
+                    <td style={{ padding: "14px 20px" }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: member.type === "IN_HOUSE" ? "#e8a04520" : "#5b9cf620", color: member.type === "IN_HOUSE" ? "#e8a045" : "#5b9cf6", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        {member.type === "IN_HOUSE" ? "In House" : "Freelance"}
+                      </span>
+                    </td>
+                  )}
+                  {visibleCols.has("primaryRole") && (
+                    <td style={{ padding: "14px 20px" }}>
+                      <span style={{ fontSize: 13, color: "#e8a045", fontWeight: 500 }}>
+                        {primaryRole(member) || "—"}
+                      </span>
+                    </td>
+                  )}
+                  {visibleCols.has("otherRoles") && (
+                    <td style={{ padding: "14px 20px" }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {otherRoles(member).length === 0
+                          ? <span style={{ color: "#444", fontSize: 13 }}>—</span>
+                          : otherRoles(member).map((r: string) => (
+                            <span key={r} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "#222", color: "#888" }}>{r}</span>
+                          ))}
+                      </div>
+                    </td>
+                  )}
+                  {visibleCols.has("tierFloor") && (
+                    <td style={{ padding: "14px 20px" }}>
+                      {member.tierFloor
+                        ? <span style={{ fontSize: 12, fontWeight: 700, color: "#e8a045", fontFamily: "monospace", background: "#e8a04515", padding: "3px 8px", borderRadius: 4 }}>T{member.tierFloor}</span>
+                        : <span style={{ color: "#333", fontSize: 13 }}>—</span>}
+                    </td>
+                  )}
+                  {visibleCols.has("location") && (
+                    <td style={{ padding: "14px 20px", fontSize: 13, color: "#666" }}>
+                      {member.location || "—"}
+                    </td>
+                  )}
+                  {visibleCols.has("experience") && (
+                    <td style={{ padding: "14px 20px" }}>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        {member.workedWithBefore && (
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: "#5cba7d20", color: "#5cba7d", letterSpacing: "0.06em", textTransform: "uppercase" }}>Worked</span>
+                        )}
+                        {member.hiredBefore && (
+                          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 4, background: "#5b9cf620", color: "#5b9cf6", letterSpacing: "0.06em", textTransform: "uppercase" }}>Hired</span>
+                        )}
+                        {!member.workedWithBefore && !member.hiredBefore && (
+                          <span style={{ color: "#333", fontSize: 13 }}>—</span>
+                        )}
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

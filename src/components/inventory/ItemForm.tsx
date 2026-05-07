@@ -149,6 +149,10 @@ export default function ItemForm({ onClose, onSave, onDelete, initialData, initi
   });
 
   const [groups, setGroups] = useState<FlatGroup[]>([]);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupParentId, setNewGroupParentId] = useState("");
+  const [savingGroup, setSavingGroup] = useState(false);
 
   useEffect(() => {
     fetch("/api/groups")
@@ -213,18 +217,85 @@ export default function ItemForm({ onClose, onSave, onDelete, initialData, initi
               </select>
             </Field>
             <Field label="Group">
-              <select
-                style={{ ...inputStyle, appearance: 'none' }}
-                value={f.primaryGroupId}
-                onChange={e => set('primaryGroupId', e.target.value)}
-              >
-                <option value="">— No group —</option>
-                {groups.map(g => (
-                  <option key={g.id} value={g.id}>
-                    {"  ".repeat(g.depth) + g.label}
-                  </option>
-                ))}
-              </select>
+              {!creatingGroup ? (
+                <select
+                  style={{ ...inputStyle, appearance: 'none' }}
+                  value={f.primaryGroupId}
+                  onChange={e => {
+                    if (e.target.value === '__new__') { setCreatingGroup(true); }
+                    else set('primaryGroupId', e.target.value);
+                  }}
+                >
+                  <option value="">— No group —</option>
+                  {groups.map(g => (
+                    <option key={g.id} value={g.id}>
+                      {"  ".repeat(g.depth) + g.label}
+                    </option>
+                  ))}
+                  <option value="__new__">+ Create new group…</option>
+                </select>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <input
+                    style={inputStyle}
+                    value={newGroupName}
+                    onChange={e => setNewGroupName(e.target.value)}
+                    placeholder="New group name"
+                    autoFocus
+                  />
+                  <select
+                    style={{ ...inputStyle, appearance: 'none' }}
+                    value={newGroupParentId}
+                    onChange={e => setNewGroupParentId(e.target.value)}
+                  >
+                    <option value="">— No parent (top level) —</option>
+                    {groups.map(g => (
+                      <option key={g.id} value={g.id}>
+                        {"  ".repeat(g.depth) + g.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      disabled={!newGroupName.trim() || savingGroup}
+                      onClick={async () => {
+                        if (!newGroupName.trim()) return;
+                        setSavingGroup(true);
+                        try {
+                          const res = await fetch('/api/groups', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ name: newGroupName.trim(), parentId: newGroupParentId || null }),
+                          });
+                          const newGroup = await res.json();
+                          const gr = await fetch('/api/groups').then(r => r.json());
+                          if (Array.isArray(gr)) {
+                            const tree = buildGroupTree(gr);
+                            setGroups(flattenGroups(tree));
+                          }
+                          set('primaryGroupId', newGroup.id);
+                          setCreatingGroup(false);
+                          setNewGroupName('');
+                          setNewGroupParentId('');
+                        } finally {
+                          setSavingGroup(false);
+                        }
+                      }}
+                      style={{ background: '#e8a045', color: '#000', border: 'none', borderRadius: 3, padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}
+                    >
+                      {savingGroup ? 'Creating…' : 'Create'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setCreatingGroup(false); setNewGroupName(''); setNewGroupParentId(''); }}
+                      style={{ background: 'none', border: 'none', color: '#666', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </Field>
             <Field label="Narrative Description" span>
               <textarea value={f.narrativeDescription} onChange={e => set('narrativeDescription', e.target.value)}

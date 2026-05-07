@@ -5,6 +5,16 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus, X, Package } from "lucide-react";
 import ItemForm from "@/components/inventory/ItemForm";
 
+const COL_DEFS_UNITS = [
+  { key: "barcode",       label: "Unit ID",       hideable: false },
+  { key: "serialNumber",  label: "Serial #",       hideable: true  },
+  { key: "condition",     label: "Condition",      hideable: true  },
+  { key: "purchaseDate",  label: "Purchase Date",  hideable: true  },
+  { key: "purchasePrice", label: "Purchase Price", hideable: true  },
+  { key: "vendor",        label: "Vendor",         hideable: true  },
+  { key: "status",        label: "Status",         hideable: true  },
+] as const;
+
 const UNIT_STATUS = {
   AVAILABLE:  { color: "#5cba7d", bg: "#5cba7d20", label: "Available" },
   OUT_ON_JOB: { color: "#5b9cf6", bg: "#5b9cf620", label: "Out on Job" },
@@ -45,6 +55,38 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
   const [editUnit, setEditUnit] = useState<any>(null);
   const [unitForm, setUnitForm] = useState({ ...EMPTY_UNIT_FORM });
 
+  const [unitSortKey, setUnitSortKey] = useState("barcode");
+  const [unitSortDir, setUnitSortDir] = useState<"asc" | "desc">("asc");
+
+  const [colMenuOpen, setColMenuOpen] = useState(false);
+  const colMenuRef = useRef<HTMLDivElement>(null);
+
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set(COL_DEFS_UNITS.map(c => c.key));
+    try {
+      const saved = localStorage.getItem("cols_units");
+      if (saved) {
+        const parsed: string[] = JSON.parse(saved);
+        return new Set(parsed);
+      }
+    } catch {}
+    return new Set(COL_DEFS_UNITS.map(c => c.key));
+  });
+
+  const toggleCol = (key: string) => {
+    setVisibleCols(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      localStorage.setItem("cols_units", JSON.stringify([...next]));
+      return next;
+    });
+  };
+
+  const handleUnitSort = (key: string) => {
+    if (unitSortKey === key) setUnitSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setUnitSortKey(key); setUnitSortDir("asc"); }
+  };
+
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; unit: any } | null>(null);
   const contextRef = useRef<HTMLDivElement>(null);
 
@@ -58,6 +100,8 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
     const handler = (e: MouseEvent) => {
       if (contextRef.current && !contextRef.current.contains(e.target as Node))
         setContextMenu(null);
+      if (colMenuRef.current && !colMenuRef.current.contains(e.target as Node))
+        setColMenuOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
@@ -161,10 +205,17 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
   if (!item || item.error) return <div style={{ color: "#e05252", fontSize: 14, textAlign: "center", padding: "64px 0" }}>Item not found.</div>;
 
   const units: any[] = item.units || [];
-  const available = units.filter(u => u.status === "AVAILABLE").length;
-  const outCount  = units.filter(u => u.status === "OUT_ON_JOB").length;
-  const repairCnt = units.filter(u => u.status === "IN_REPAIR").length;
-  const retiredCnt = units.filter(u => u.status === "RETIRED").length;
+  const available = units.filter((u: any) => u.status === "AVAILABLE").length;
+  const outCount  = units.filter((u: any) => u.status === "OUT_ON_JOB").length;
+  const repairCnt = units.filter((u: any) => u.status === "IN_REPAIR").length;
+  const retiredCnt = units.filter((u: any) => u.status === "RETIRED").length;
+
+  const sortedUnits = [...units].sort((a, b) => {
+    const aVal = String(a[unitSortKey] ?? "");
+    const bVal = String(b[unitSortKey] ?? "");
+    const cmp = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: "base" });
+    return unitSortDir === "asc" ? cmp : -cmp;
+  });
 
   const menuBtnStyle: React.CSSProperties = {
     width: "100%", textAlign: "left", padding: "10px 16px", background: "none",
@@ -271,14 +322,53 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
             </div>
           ) : (
             <div style={{ background: "#161616", border: "1px solid #242424", borderRadius: 8, overflow: "hidden" }}>
+              {/* Table toolbar */}
+              <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 12px", borderBottom: "1px solid #1e1e1e", position: "relative" }} ref={colMenuRef}>
+                <button
+                  onClick={() => setColMenuOpen(v => !v)}
+                  style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "1px solid #2a2a2a", color: colMenuOpen ? "#f0f0f0" : "#555", fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase", padding: "5px 10px", borderRadius: 4, cursor: "pointer", fontFamily: "inherit" }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = "#444"; e.currentTarget.style.color = "#f0f0f0"; }}
+                  onMouseLeave={e => { if (!colMenuOpen) { e.currentTarget.style.borderColor = "#2a2a2a"; e.currentTarget.style.color = "#555"; } }}
+                >
+                  Columns
+                </button>
+                {colMenuOpen && (
+                  <div style={{ position: "absolute", top: "calc(100% + 4px)", right: 12, background: "#1e1e1e", border: "1px solid #333", borderRadius: 6, zIndex: 200, minWidth: 180, boxShadow: "0 8px 24px rgba(0,0,0,0.5)", padding: "6px 0" }}>
+                    {COL_DEFS_UNITS.map(col => (
+                      <label key={col.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 14px", cursor: col.hideable ? "pointer" : "default", opacity: col.hideable ? 1 : 0.4 }}>
+                        <input
+                          type="checkbox"
+                          checked={visibleCols.has(col.key)}
+                          disabled={!col.hideable}
+                          onChange={() => col.hideable && toggleCol(col.key)}
+                          style={{ accentColor: "#e8a045", width: 13, height: 13 }}
+                        />
+                        <span style={{ fontSize: 13, color: "#ccc" }}>{col.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ background: "#111", borderBottom: "1px solid #242424" }}>
-                    <th style={{ textAlign: "left",  padding: "10px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555" }}>Serial #</th>
-                    <th style={{ textAlign: "left",  padding: "10px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555" }}>Unit ID</th>
-                    <th style={{ textAlign: "left",  padding: "10px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555" }}>Status</th>
-                    <th style={{ textAlign: "left",  padding: "10px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555" }}>Condition</th>
-                    <th style={{ textAlign: "left",  padding: "10px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555" }}>Purchase Date</th>
+                    {([
+                      { label: "Unit ID",        key: "barcode",       align: "left"  },
+                      { label: "Serial #",        key: "serialNumber",  align: "left"  },
+                      { label: "Condition",       key: "condition",     align: "left"  },
+                      { label: "Purchase Date",   key: "purchaseDate",  align: "left"  },
+                      { label: "Purchase Price",  key: "purchasePrice", align: "right" },
+                      { label: "Vendor",          key: "vendor",        align: "left"  },
+                      { label: "Status",          key: "status",        align: "left"  },
+                    ] as const).map(({ label, key, align }) => {
+                      if (key !== "barcode" && !visibleCols.has(key)) return null;
+                      const active = unitSortKey === key;
+                      return (
+                        <th key={key} onClick={() => handleUnitSort(key)} style={{ textAlign: align, padding: "10px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: active ? "#ccc" : "#555", cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}>
+                          {label}{active ? (unitSortDir === "asc" ? " ↑" : " ↓") : ""}
+                        </th>
+                      );
+                    })}
                     {item.trackRunningHours && (
                       <th style={{ textAlign: "right", padding: "10px 16px", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "#555" }}>Hours</th>
                     )}
@@ -286,7 +376,7 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
                   </tr>
                 </thead>
                 <tbody>
-                  {units.map((unit: any) => {
+                  {sortedUnits.map((unit: any) => {
                     const sc = UNIT_STATUS[unit.status as keyof typeof UNIT_STATUS] ?? UNIT_STATUS.AVAILABLE;
                     return (
                       <tr
@@ -297,23 +387,41 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
                         onMouseEnter={e => (e.currentTarget.style.background = "#1a1a1a")}
                         onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
                       >
-                        <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 13, color: unit.serialNumber ? "#f0f0f0" : "#444" }}>
-                          {unit.serialNumber || "—"}
-                        </td>
-                        <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 12, color: "#666" }}>
+                        <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 12, color: "#e8a045" }}>
                           {unit.barcode || "—"}
                         </td>
-                        <td style={{ padding: "12px 16px" }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, letterSpacing: "0.06em", textTransform: "uppercase", background: sc.bg, color: sc.color }}>
-                            {sc.label}
-                          </span>
-                        </td>
-                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#888" }}>
-                          {unit.condition || "—"}
-                        </td>
-                        <td style={{ padding: "12px 16px", fontSize: 13, color: "#666" }}>
-                          {fmtDate(unit.purchaseDate)}
-                        </td>
+                        {visibleCols.has("serialNumber") && (
+                          <td style={{ padding: "12px 16px", fontFamily: "monospace", fontSize: 13, color: unit.serialNumber ? "#f0f0f0" : "#444" }}>
+                            {unit.serialNumber || "—"}
+                          </td>
+                        )}
+                        {visibleCols.has("condition") && (
+                          <td style={{ padding: "12px 16px", fontSize: 13, color: "#888" }}>
+                            {unit.condition || "—"}
+                          </td>
+                        )}
+                        {visibleCols.has("purchaseDate") && (
+                          <td style={{ padding: "12px 16px", fontSize: 13, color: "#666" }}>
+                            {fmtDate(unit.purchaseDate)}
+                          </td>
+                        )}
+                        {visibleCols.has("purchasePrice") && (
+                          <td style={{ padding: "12px 16px", textAlign: "right", fontFamily: "monospace", fontSize: 13, color: "#666" }}>
+                            {unit.purchasePrice != null ? `$${Number(unit.purchasePrice).toLocaleString()}` : "—"}
+                          </td>
+                        )}
+                        {visibleCols.has("vendor") && (
+                          <td style={{ padding: "12px 16px", fontSize: 13, color: "#666" }}>
+                            {unit.vendor || "—"}
+                          </td>
+                        )}
+                        {visibleCols.has("status") && (
+                          <td style={{ padding: "12px 16px" }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, letterSpacing: "0.06em", textTransform: "uppercase", background: sc.bg, color: sc.color }}>
+                              {sc.label}
+                            </span>
+                          </td>
+                        )}
                         {item.trackRunningHours && (
                           <td style={{ padding: "12px 16px", textAlign: "right", fontFamily: "monospace", fontSize: 13, color: "#666" }}>
                             {Number(unit.runningHours || 0).toLocaleString()}h
