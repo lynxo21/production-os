@@ -55,6 +55,16 @@ function buildTree(flat: Group[]): GroupNode[] {
   return roots;
 }
 
+function flattenTree(nodes: GroupNode[]): Group[] {
+  const result: Group[] = [];
+  const traverse = (n: GroupNode) => {
+    result.push({ id: n.id, name: n.name, parentId: n.parentId, sortOrder: n.sortOrder });
+    n.children.forEach(traverse);
+  };
+  nodes.forEach(traverse);
+  return result;
+}
+
 // ── GroupNode Component ────────────────────────────────────────────────────
 
 function GroupNodeItem({
@@ -62,20 +72,48 @@ function GroupNodeItem({
   depth,
   selectedId,
   onAddChild,
+  draggingId,
+  dragOverId,
+  setDraggingId,
+  setDragOverId,
+  onDrop,
+  onContextMenu,
+  renamingGroupId,
+  onRenameKeyDown,
+  renameValue,
+  setRenameValue,
 }: {
   node: GroupNode;
   depth: number;
   selectedId: string | null;
   onAddChild: (parentId: string) => void;
+  draggingId: string | null;
+  dragOverId: string | null;
+  setDraggingId: (id: string | null) => void;
+  setDragOverId: (id: string | null) => void;
+  onDrop: (targetId: string) => void;
+  onContextMenu: (x: number, y: number, groupId: string, groupName: string) => void;
+  renamingGroupId: string | null;
+  onRenameKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, groupId: string) => void;
+  renameValue: string;
+  setRenameValue: (v: string) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [hovered, setHovered] = useState(false);
   const router = useRouter();
   const isSelected = selectedId === node.id;
+  const isDragOver = dragOverId === node.id;
+  const isRenaming = renamingGroupId === node.id;
 
   return (
     <div>
       <div
+        draggable={true}
+        onDragStart={() => setDraggingId(node.id)}
+        onDragOver={(e) => { e.preventDefault(); setDragOverId(node.id); }}
+        onDragLeave={() => setDragOverId(null)}
+        onDrop={(e) => { e.preventDefault(); onDrop(node.id); setDragOverId(null); }}
+        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); onContextMenu(e.clientX, e.clientY, node.id, node.name); }}
         style={{
           display: "flex",
           alignItems: "center",
@@ -85,11 +123,13 @@ function GroupNodeItem({
           paddingBottom: 6,
           cursor: "pointer",
           color: hovered || isSelected ? "#e8a045" : "#888",
-          background: isSelected ? "#e8a04510" : "transparent",
+          background: isDragOver ? "#e8a04520" : isSelected ? "#e8a04510" : "transparent",
+          outline: isDragOver ? "1px solid #e8a04540" : "none",
+          outlineOffset: -1,
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        onClick={() => router.push(`/inventory?group=${node.id}`)}
+        onClick={() => { if (!isRenaming) router.push(`/inventory?group=${node.id}`); }}
       >
         {/* Collapse toggle */}
         {node.children.length > 0 ? (
@@ -115,11 +155,32 @@ function GroupNodeItem({
           <span style={{ width: 16, flexShrink: 0 }} />
         )}
 
-        <span style={{ flex: 1, fontSize: 13, fontWeight: isSelected ? 600 : 400 }}>
-          {node.name}
-        </span>
+        {isRenaming ? (
+          <input
+            autoFocus
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => onRenameKeyDown(e, node.id)}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              flex: 1,
+              background: "#1c1c1c",
+              border: "1px solid #e8a04560",
+              borderRadius: 4,
+              color: "#f0f0f0",
+              padding: "2px 6px",
+              fontSize: 12,
+              fontFamily: "inherit",
+              outline: "none",
+            }}
+          />
+        ) : (
+          <span style={{ flex: 1, fontSize: 13, fontWeight: isSelected ? 600 : 400 }}>
+            {node.name}
+          </span>
+        )}
 
-        {hovered && (
+        {hovered && !isRenaming && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -149,6 +210,16 @@ function GroupNodeItem({
               depth={depth + 1}
               selectedId={selectedId}
               onAddChild={onAddChild}
+              draggingId={draggingId}
+              dragOverId={dragOverId}
+              setDraggingId={setDraggingId}
+              setDragOverId={setDragOverId}
+              onDrop={onDrop}
+              onContextMenu={onContextMenu}
+              renamingGroupId={renamingGroupId}
+              onRenameKeyDown={onRenameKeyDown}
+              renameValue={renameValue}
+              setRenameValue={setRenameValue}
             />
           ))}
         </div>
@@ -168,6 +239,16 @@ function InventoryPanelInner({
   setNewGroupName,
   onSaveNewGroup,
   onCancelNewGroup,
+  draggingId,
+  dragOverId,
+  setDraggingId,
+  setDragOverId,
+  onDrop,
+  onContextMenu,
+  renamingGroupId,
+  onRenameKeyDown,
+  renameValue,
+  setRenameValue,
 }: {
   groups: GroupNode[];
   onAddRoot: () => void;
@@ -177,6 +258,16 @@ function InventoryPanelInner({
   setNewGroupName: (v: string) => void;
   onSaveNewGroup: () => void;
   onCancelNewGroup: () => void;
+  draggingId: string | null;
+  dragOverId: string | null;
+  setDraggingId: (id: string | null) => void;
+  setDragOverId: (id: string | null) => void;
+  onDrop: (targetId: string) => void;
+  onContextMenu: (x: number, y: number, groupId: string, groupName: string) => void;
+  renamingGroupId: string | null;
+  onRenameKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, groupId: string) => void;
+  renameValue: string;
+  setRenameValue: (v: string) => void;
 }) {
   const searchParams = useSearchParams();
   const selectedId = searchParams.get("group");
@@ -287,6 +378,16 @@ function InventoryPanelInner({
               depth={0}
               selectedId={selectedId}
               onAddChild={onAddChild}
+              draggingId={draggingId}
+              dragOverId={dragOverId}
+              setDraggingId={setDraggingId}
+              setDragOverId={setDragOverId}
+              onDrop={onDrop}
+              onContextMenu={onContextMenu}
+              renamingGroupId={renamingGroupId}
+              onRenameKeyDown={onRenameKeyDown}
+              renameValue={renameValue}
+              setRenameValue={setRenameValue}
             />
             {/* New child group input */}
             {newGroupParentId === node.id && (
@@ -333,6 +434,16 @@ function InventoryPanel({
   setNewGroupName,
   onSaveNewGroup,
   onCancelNewGroup,
+  draggingId,
+  dragOverId,
+  setDraggingId,
+  setDragOverId,
+  onDrop,
+  onContextMenu,
+  renamingGroupId,
+  onRenameKeyDown,
+  renameValue,
+  setRenameValue,
 }: {
   groups: GroupNode[];
   onAddRoot: () => void;
@@ -342,6 +453,16 @@ function InventoryPanel({
   setNewGroupName: (v: string) => void;
   onSaveNewGroup: () => void;
   onCancelNewGroup: () => void;
+  draggingId: string | null;
+  dragOverId: string | null;
+  setDraggingId: (id: string | null) => void;
+  setDragOverId: (id: string | null) => void;
+  onDrop: (targetId: string) => void;
+  onContextMenu: (x: number, y: number, groupId: string, groupName: string) => void;
+  renamingGroupId: string | null;
+  onRenameKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, groupId: string) => void;
+  renameValue: string;
+  setRenameValue: (v: string) => void;
 }) {
   return (
     <Suspense fallback={null}>
@@ -354,6 +475,16 @@ function InventoryPanel({
         setNewGroupName={setNewGroupName}
         onSaveNewGroup={onSaveNewGroup}
         onCancelNewGroup={onCancelNewGroup}
+        draggingId={draggingId}
+        dragOverId={dragOverId}
+        setDraggingId={setDraggingId}
+        setDragOverId={setDragOverId}
+        onDrop={onDrop}
+        onContextMenu={onContextMenu}
+        renamingGroupId={renamingGroupId}
+        onRenameKeyDown={onRenameKeyDown}
+        renameValue={renameValue}
+        setRenameValue={setRenameValue}
       />
     </Suspense>
   );
@@ -371,6 +502,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [groups, setGroups] = useState<GroupNode[]>([]);
   const [newGroupParentId, setNewGroupParentId] = useState<string | null | undefined>(undefined);
   const [newGroupName, setNewGroupName] = useState("");
+
+  // Drag state
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+
+  // Context menu state
+  const [groupContextMenu, setGroupContextMenu] = useState<{
+    x: number;
+    y: number;
+    groupId: string;
+    groupName: string;
+  } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  // Rename state
+  const [renamingGroupId, setRenamingGroupId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const isInventory = pathname.startsWith("/inventory");
 
@@ -392,6 +540,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       })
       .catch(() => {});
   }, [isInventory]);
+
+  // Close context menu on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setGroupContextMenu(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const handleAddRoot = useCallback(() => {
     setNewGroupParentId(null);
@@ -422,29 +581,90 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ name, parentId, sortOrder: 0 }),
       });
       const created: Group = await res.json();
-      setGroups((prev) => {
-        // Rebuild from flat list
-        const flattenTree = (nodes: GroupNode[]): Group[] => {
-          const result: Group[] = [];
-          const traverse = (n: GroupNode) => {
-            result.push({ id: n.id, name: n.name, parentId: n.parentId, sortOrder: n.sortOrder });
-            n.children.forEach(traverse);
-          };
-          nodes.forEach(traverse);
-          return result;
-        };
-        return buildTree([...flattenTree(prev), created]);
-      });
+      setGroups((prev) => buildTree([...flattenTree(prev), created]));
     } catch {}
     setNewGroupParentId(undefined);
     setNewGroupName("");
   }, [newGroupName, newGroupParentId, handleCancelNewGroup]);
+
+  const handleDrop = useCallback(async (targetId: string) => {
+    if (!draggingId || draggingId === targetId) {
+      setDraggingId(null);
+      return;
+    }
+    const dragId = draggingId;
+    setDraggingId(null);
+    setGroups((prev) => {
+      const flat = flattenTree(prev);
+      return buildTree(flat.map((g) => g.id === dragId ? { ...g, parentId: targetId } : g));
+    });
+    try {
+      await fetch("/api/groups", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: dragId, parentId: targetId }),
+      });
+    } catch {}
+  }, [draggingId]);
+
+  const handleGroupContextMenu = useCallback((x: number, y: number, groupId: string, groupName: string) => {
+    setGroupContextMenu({ x, y, groupId, groupName });
+  }, []);
+
+  const handleRenameKeyDown = useCallback(async (e: React.KeyboardEvent<HTMLInputElement>, groupId: string) => {
+    if (e.key === "Enter") {
+      const name = renameValue.trim();
+      if (name) {
+        setGroups((prev) => {
+          const flat = flattenTree(prev);
+          return buildTree(flat.map((g) => g.id === groupId ? { ...g, name } : g));
+        });
+        try {
+          await fetch("/api/groups", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: groupId, name }),
+          });
+        } catch {}
+      }
+      setRenamingGroupId(null);
+    } else if (e.key === "Escape") {
+      setRenamingGroupId(null);
+    }
+  }, [renameValue]);
+
+  const handleDeleteGroup = useCallback(async (groupId: string) => {
+    setGroups((prev) => {
+      const flat = flattenTree(prev);
+      return buildTree(flat.filter((g) => g.id !== groupId));
+    });
+    try {
+      await fetch("/api/groups", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: groupId }),
+      });
+    } catch {}
+  }, []);
 
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
+  };
+
+  const menuBtnStyle: React.CSSProperties = {
+    width: "100%",
+    textAlign: "left",
+    padding: "10px 16px",
+    background: "none",
+    border: "none",
+    color: "#f0f0f0",
+    fontSize: 13,
+    cursor: "pointer",
+    display: "block",
+    fontFamily: "inherit",
   };
 
   const sidebarWidth = expanded ? 220 : 48;
@@ -658,7 +878,65 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             setNewGroupName={setNewGroupName}
             onSaveNewGroup={handleSaveNewGroup}
             onCancelNewGroup={handleCancelNewGroup}
+            draggingId={draggingId}
+            dragOverId={dragOverId}
+            setDraggingId={setDraggingId}
+            setDragOverId={setDragOverId}
+            onDrop={handleDrop}
+            onContextMenu={handleGroupContextMenu}
+            renamingGroupId={renamingGroupId}
+            onRenameKeyDown={handleRenameKeyDown}
+            renameValue={renameValue}
+            setRenameValue={setRenameValue}
           />
+        </div>
+      )}
+
+      {/* Group context menu */}
+      {groupContextMenu && (
+        <div
+          ref={contextMenuRef}
+          style={{
+            position: "fixed",
+            top: groupContextMenu.y,
+            left: groupContextMenu.x,
+            background: "#1e1e1e",
+            border: "1px solid #333",
+            borderRadius: 6,
+            zIndex: 300,
+            minWidth: 180,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+            overflow: "hidden",
+          }}
+        >
+          <button
+            style={menuBtnStyle}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#2a2a2a")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+            onClick={() => {
+              setRenameValue(groupContextMenu.groupName);
+              setRenamingGroupId(groupContextMenu.groupId);
+              setGroupContextMenu(null);
+            }}
+          >
+            Rename
+          </button>
+          <div style={{ height: 1, background: "#2a2a2a" }} />
+          <button
+            style={{ ...menuBtnStyle, color: "#e05252" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "#2a2a2a")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+            onClick={() => {
+              const name = groupContextMenu.groupName;
+              const id = groupContextMenu.groupId;
+              setGroupContextMenu(null);
+              if (window.confirm(`Delete group "${name}"?`)) {
+                handleDeleteGroup(id);
+              }
+            }}
+          >
+            Delete
+          </button>
         </div>
       )}
 

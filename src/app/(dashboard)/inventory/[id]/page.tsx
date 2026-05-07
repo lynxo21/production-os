@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus, X, Package } from "lucide-react";
 import ItemForm from "@/components/inventory/ItemForm";
 
-const ORG_ID = "org-after-now-001";
-
 const UNIT_STATUS = {
   AVAILABLE:  { color: "#5cba7d", bg: "#5cba7d20", label: "Available" },
   OUT_ON_JOB: { color: "#5b9cf6", bg: "#5b9cf620", label: "Out on Job" },
@@ -136,7 +134,7 @@ export default function InventoryItemPage({ params }: { params: Promise<{ id: st
     const res = await fetch("/api/inventory", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, organizationId: ORG_ID }),
+      body: JSON.stringify(data),
     });
     const result = await res.json();
     setItem((prev: any) => ({ ...prev, ...result }));

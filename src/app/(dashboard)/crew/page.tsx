@@ -4,8 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import { Users, Plus } from "lucide-react";
 import CrewForm from "@/components/crew/CrewForm";
 
-const ORG_ID = "org-after-now-001";
-
 interface ContextMenu {
   x: number;
   y: number;
@@ -62,7 +60,7 @@ export default function CrewPage() {
     const res = await fetch("/api/crew", {
       method: isEdit ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, organizationId: ORG_ID }),
+      body: JSON.stringify(data),
     });
     const result = await res.json();
     if (isEdit) {
@@ -91,7 +89,6 @@ export default function CrewPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...member,
-        organizationId: ORG_ID,
         minimumTier: member.tierFloor,
         hiredBefore: !member.hiredBefore,
         roles,
@@ -112,7 +109,6 @@ export default function CrewPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...member,
-        organizationId: ORG_ID,
         minimumTier: member.tierFloor,
         roles,
       }),

@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { FileText, Plus } from "lucide-react";
 import ClientForm from "@/components/clients/ClientForm";
 
-const ORG_ID = "org-after-now-001";
-
 interface ContextMenu {
   x: number;
   y: number;
@@ -60,7 +58,7 @@ export default function ClientsPage() {
     const res = await fetch("/api/clients", {
       method: isEdit ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, organizationId: ORG_ID }),
+      body: JSON.stringify(data),
     });
     const result = await res.json();
     if (isEdit) {

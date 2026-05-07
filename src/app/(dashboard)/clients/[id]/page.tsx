@@ -6,8 +6,6 @@ import { ArrowLeft, Mail, Phone, MapPin, Briefcase, Plus } from "lucide-react";
 import ClientForm from "@/components/clients/ClientForm";
 import JobForm from "@/components/jobs/JobForm";
 
-const ORG_ID = "org-after-now-001";
-
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "Draft", QUOTED: "Quoted", CONFIRMED: "Confirmed",
   IN_PROGRESS: "In Progress", WRAPPED: "Wrapped", INVOICED: "Invoiced", CANCELLED: "Cancelled",
@@ -56,7 +54,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const res = await fetch("/api/jobs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, organizationId: ORG_ID }),
+      body: JSON.stringify(data),
     });
     const result = await res.json();
     if (result.id) {
@@ -68,7 +66,7 @@ export default function ClientDetailPage({ params }: { params: Promise<{ id: str
     const res = await fetch("/api/clients", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, organizationId: ORG_ID }),
+      body: JSON.stringify(data),
     });
     const result = await res.json();
     setClient((prev: any) => ({ ...prev, ...result }));

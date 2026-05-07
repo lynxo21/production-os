@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-const ORG_ID = "org-after-now-001";
+import { getOrgId } from "@/lib/getOrgId";
 
 export async function GET() {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const org = await prisma.organization.findUnique({
-      where: { id: ORG_ID },
+      where: { id: orgId },
       select: { settings: true },
     });
     return NextResponse.json(org?.settings || {});
@@ -17,9 +18,11 @@ export async function GET() {
 
 export async function PUT(req: NextRequest) {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json();
     const org = await prisma.organization.update({
-      where: { id: ORG_ID },
+      where: { id: orgId },
       data: { settings: body },
       select: { settings: true },
     });

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
-const ORG_ID = "org-after-now-001";
+import { getOrgId } from "@/lib/getOrgId";
 
 export async function GET() {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const tiers = await prisma.budgetTier.findMany({
-      where: { organizationId: ORG_ID },
+      where: { organizationId: orgId },
       orderBy: { tierNumber: "asc" },
     });
     return NextResponse.json(tiers);
@@ -17,10 +18,12 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json();
     const tier = await prisma.budgetTier.create({
       data: {
-        organizationId: ORG_ID,
+        organizationId: orgId,
         tierNumber: body.tierNumber,
         name: body.name,
         description: body.description || null,
@@ -37,6 +40,8 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json();
     const tier = await prisma.budgetTier.update({
       where: { id: body.id },
@@ -56,6 +61,8 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await req.json();
     await prisma.budgetTier.delete({ where: { id } });
     return NextResponse.json({ success: true });

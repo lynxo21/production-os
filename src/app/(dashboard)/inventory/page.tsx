@@ -4,12 +4,35 @@ import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import ItemForm from "@/components/inventory/ItemForm";
 
-const ORG_ID = "org-after-now-001";
-
 interface ContextMenu {
   x: number;
   y: number;
   item: any;
+}
+
+interface Group {
+  id: string;
+  name: string;
+  parentId: string | null;
+  sortOrder: number;
+}
+
+function getDescendantIds(groupId: string, allGroups: { id: string; parentId: string | null }[]): string[] {
+  const result = [groupId];
+  const children = allGroups.filter(g => g.parentId === groupId);
+  for (const child of children) result.push(...getDescendantIds(child.id, allGroups));
+  return result;
+}
+
+function getGroupPath(groupId: string, allGroups: Group[]): Group[] {
+  const map = new Map(allGroups.map(g => [g.id, g]));
+  const path: Group[] = [];
+  let current = map.get(groupId);
+  while (current) {
+    path.unshift(current);
+    current = current.parentId ? map.get(current.parentId) : undefined;
+  }
+  return path;
 }
 
 function InventoryPageInner() {
@@ -19,6 +42,7 @@ function InventoryPageInner() {
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState<any | null>(null);
   const [items, setItems] = useState<any[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
   const contextRef = useRef<HTMLDivElement>(null);
@@ -30,7 +54,10 @@ function InventoryPageInner() {
     else { setSortKey(key); setSortDir("asc"); }
   };
 
-  const filtered = selectedGroup ? items.filter(i => i.primaryGroupId === selectedGroup) : items;
+  const filtered = selectedGroup
+    ? items.filter(i => i.primaryGroupId && getDescendantIds(selectedGroup, groups).includes(i.primaryGroupId))
+    : items;
+
   const sorted = [...filtered].sort((a, b) => {
     const aVal = String(a[sortKey] ?? "");
     const bVal = String(b[sortKey] ?? "");
@@ -47,7 +74,14 @@ function InventoryPageInner() {
       });
   }, []);
 
-  // Close context menu on outside click
+  useEffect(() => {
+    fetch("/api/groups")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) setGroups(data);
+      });
+  }, []);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (contextRef.current && !contextRef.current.contains(e.target as Node)) {
@@ -63,7 +97,7 @@ function InventoryPageInner() {
     const res = await fetch("/api/inventory", {
       method: isEdit ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, organizationId: ORG_ID }),
+      body: JSON.stringify(data),
     });
     const result = await res.json();
     if (isEdit) {
@@ -90,7 +124,6 @@ function InventoryPageInner() {
       body: JSON.stringify({
         ...item,
         id: undefined,
-        organizationId: ORG_ID,
         name: `${item.name} (Copy)`,
         createdAt: undefined,
         updatedAt: undefined,
@@ -108,10 +141,12 @@ function InventoryPageInner() {
     fontFamily: "inherit",
   };
 
+  const breadcrumbPath = selectedGroup && groups.length > 0 ? getGroupPath(selectedGroup, groups) : [];
+
   return (
     <div>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 32 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 16 }}>
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: "#f0f0f0", marginBottom: 4 }}>Inventory</h1>
           <p style={{ fontSize: 14, color: "#666" }}>
@@ -125,6 +160,30 @@ function InventoryPageInner() {
           + Add Item
         </button>
       </div>
+
+      {/* Breadcrumb */}
+      {selectedGroup && groups.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16, fontSize: 13, color: "#666" }}>
+          <span
+            style={{ cursor: "pointer", color: "#888" }}
+            onClick={() => router.push("/inventory")}
+          >
+            All Items
+          </span>
+          {breadcrumbPath.map(g => (
+            <>
+              <span key={`sep-${g.id}`} style={{ color: "#333" }}>/</span>
+              <span
+                key={g.id}
+                style={{ cursor: "pointer", color: g.id === selectedGroup ? "#e8a045" : "#888" }}
+                onClick={() => router.push(`/inventory?group=${g.id}`)}
+              >
+                {g.name}
+              </span>
+            </>
+          ))}
+        </div>
+      )}
 
       {/* Table */}
       {loading ? (
@@ -249,6 +308,7 @@ function InventoryPageInner() {
           onSave={handleSave}
           onDelete={editItem ? () => handleDelete(editItem.id) : undefined}
           initialData={editItem}
+          initialGroupId={selectedGroup || undefined}
         />
       )}
     </div>

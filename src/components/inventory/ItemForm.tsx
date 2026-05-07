@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 
 const PRESETS = ["MODEL", "CONTAINER", "PACKAGE"];
@@ -10,6 +10,7 @@ interface ItemFormProps {
   onSave: (data: any) => void;
   onDelete?: () => void;
   initialData?: any;
+  initialGroupId?: string;
 }
 
 export interface ItemFormData {
@@ -31,6 +32,47 @@ export interface ItemFormData {
   preset: string;
   trackedBySerial: boolean;
   isUnitContainer: boolean;
+  primaryGroupId: string;
+}
+
+interface FlatGroup {
+  id: string;
+  label: string;
+  depth: number;
+}
+
+interface GroupRaw {
+  id: string;
+  name: string;
+  parentId: string | null;
+  sortOrder: number;
+}
+
+interface GroupNode extends GroupRaw {
+  children: GroupNode[];
+}
+
+function buildGroupTree(flat: GroupRaw[]): GroupNode[] {
+  const map = new Map<string, GroupNode>();
+  flat.forEach((g) => map.set(g.id, { ...g, children: [] }));
+  const roots: GroupNode[] = [];
+  map.forEach((node) => {
+    if (node.parentId && map.has(node.parentId)) {
+      map.get(node.parentId)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+  return roots;
+}
+
+function flattenGroups(nodes: GroupNode[], depth = 0): FlatGroup[] {
+  const result: FlatGroup[] = [];
+  for (const node of nodes) {
+    result.push({ id: node.id, label: node.name, depth });
+    result.push(...flattenGroups(node.children, depth + 1));
+  }
+  return result;
 }
 
 const C = {
@@ -79,7 +121,7 @@ function Btn({ variant = 'primary', onClick, children }: { variant?: string; onC
   );
 }
 
-export default function ItemForm({ onClose, onSave, onDelete, initialData }: ItemFormProps) {
+export default function ItemForm({ onClose, onSave, onDelete, initialData, initialGroupId }: ItemFormProps) {
   const isEdit = !!initialData;
 
   const [f, setF] = useState<ItemFormData>({
@@ -101,13 +143,33 @@ export default function ItemForm({ onClose, onSave, onDelete, initialData }: Ite
     preset: initialData?.preset || 'MODEL',
     trackedBySerial: initialData?.trackedBySerial || false,
     isUnitContainer: initialData?.isUnitContainer || false,
+    primaryGroupId: initialData?.primaryGroupId || initialGroupId || '',
   });
+
+  const [groups, setGroups] = useState<FlatGroup[]>([]);
+
+  useEffect(() => {
+    fetch("/api/groups")
+      .then((r) => r.json())
+      .then((data: GroupRaw[]) => {
+        if (Array.isArray(data)) {
+          const tree = buildGroupTree(data);
+          setGroups(flattenGroups(tree));
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const set = (k: keyof ItemFormData, v: string | boolean) => setF(x => ({ ...x, [k]: v }));
 
   const save = () => {
     if (!f.name.trim()) return;
-    onSave(isEdit ? { ...f, id: initialData.id } : f);
+    const payload = {
+      ...(isEdit ? { id: initialData.id } : {}),
+      ...f,
+      primaryGroupId: f.primaryGroupId || null,
+    };
+    onSave(payload);
     onClose();
   };
 
@@ -146,6 +208,20 @@ export default function ItemForm({ onClose, onSave, onDelete, initialData }: Ite
             <Field label="Preset">
               <select style={{ ...inputStyle, appearance: 'none' }} value={f.preset} onChange={e => set('preset', e.target.value)}>
                 {PRESETS.map(p => <option key={p}>{p}</option>)}
+              </select>
+            </Field>
+            <Field label="Group">
+              <select
+                style={{ ...inputStyle, appearance: 'none' }}
+                value={f.primaryGroupId}
+                onChange={e => set('primaryGroupId', e.target.value)}
+              >
+                <option value="">— No group —</option>
+                {groups.map(g => (
+                  <option key={g.id} value={g.id}>
+                    {"  ".repeat(g.depth) + g.label}
+                  </option>
+                ))}
               </select>
             </Field>
             <Field label="Narrative Description" span>

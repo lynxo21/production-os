@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { Briefcase, Plus } from "lucide-react";
 import JobForm from "@/components/jobs/JobForm";
 
-const ORG_ID = "org-after-now-001";
-
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "Draft", QUOTED: "Quoted", CONFIRMED: "Confirmed",
   IN_PROGRESS: "In Progress", WRAPPED: "Wrapped", INVOICED: "Invoiced",
@@ -71,7 +69,7 @@ export default function JobsPage() {
     const res = await fetch("/api/jobs", {
       method: isEdit ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, organizationId: ORG_ID }),
+      body: JSON.stringify(data),
     });
     const result = await res.json();
     if (isEdit) {
@@ -226,7 +224,7 @@ export default function JobsPage() {
                   const res = await fetch("/api/jobs", {
                     method: "PUT",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ ...contextMenu.job, status: value, organizationId: ORG_ID }),
+                    body: JSON.stringify({ ...contextMenu.job, status: value }),
                   });
                   const result = await res.json();
                   setJobs(prev => prev.map(j => j.id === result.id ? result : j));

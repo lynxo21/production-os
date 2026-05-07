@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getOrgId } from "@/lib/getOrgId";
 
 export async function GET() {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const items = await prisma.item.findMany({
+      where: { organizationId: orgId },
       orderBy: { createdAt: "desc" },
     });
     return NextResponse.json(items);
@@ -14,10 +18,12 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json();
     const item = await prisma.item.create({
       data: {
-        organizationId: body.organizationId,
+        organizationId: orgId,
         name: body.name,
         shortName: body.shortName || null,
         shorthand: body.shorthand || null,
@@ -36,6 +42,7 @@ export async function POST(req: NextRequest) {
         preset: body.preset || "MODEL",
         trackedBySerial: body.trackedBySerial || false,
         isUnitContainer: body.isUnitContainer || false,
+        primaryGroupId: body.primaryGroupId || null,
       },
     });
     return NextResponse.json(item);
@@ -44,8 +51,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
+
 export async function PUT(req: NextRequest) {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json();
     const item = await prisma.item.update({
       where: { id: body.id },
@@ -68,6 +78,7 @@ export async function PUT(req: NextRequest) {
         preset: body.preset || "MODEL",
         trackedBySerial: body.trackedBySerial || false,
         isUnitContainer: body.isUnitContainer || false,
+        primaryGroupId: body.primaryGroupId || null,
       },
     });
     return NextResponse.json(item);
@@ -79,6 +90,8 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await req.json();
     await prisma.item.delete({ where: { id } });
     return NextResponse.json({ success: true });

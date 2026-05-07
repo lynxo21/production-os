@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getOrgId } from "@/lib/getOrgId";
 
 export async function GET() {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const jobs = await prisma.job.findMany({
+      where: { organizationId: orgId },
       include: { client: true, tier: true },
       orderBy: { createdAt: "desc" },
     });
@@ -16,12 +20,12 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json();
-    const orgId = body.organizationId;
 
     let jobNumber = body.jobNumber || null;
 
-    // Auto-generate job number if setting is enabled and no number was provided
     if (!jobNumber) {
       const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { settings: true } });
       const settings = (org?.settings as any) || {};
@@ -64,6 +68,8 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json();
     const job = await prisma.job.update({
       where: { id: body.id },
@@ -90,6 +96,8 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await req.json();
     await prisma.job.delete({ where: { id } });
     return NextResponse.json({ success: true });

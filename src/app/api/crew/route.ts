@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getOrgId } from "@/lib/getOrgId";
 
 export async function GET() {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const crew = await prisma.crewMember.findMany({
+      where: { organizationId: orgId },
       include: {
         roles: {
           include: { role: true },
@@ -21,13 +25,15 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json();
 
     console.log("Crew POST body:", JSON.stringify(body, null, 2));
 
     const member = await prisma.crewMember.create({
       data: {
-        organizationId: body.organizationId,
+        organizationId: orgId,
         firstName: body.firstName,
         lastName: body.lastName,
         email: body.email || null,
@@ -44,19 +50,16 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Save roles if any were added
     if (body.roles && body.roles.length > 0) {
       for (const [index, r] of body.roles.entries()) {
-        // Find or create the role
         let role = await prisma.role.findFirst({
-          where: { name: r.role, organizationId: body.organizationId },
+          where: { name: r.role, organizationId: orgId },
         });
         if (!role) {
           role = await prisma.role.create({
-            data: { name: r.role, organizationId: body.organizationId, sortOrder: index },
+            data: { name: r.role, organizationId: orgId, sortOrder: index },
           });
         }
-        // Link role to crew member
         await prisma.crewMemberRole.create({
           data: {
             crewMemberId: member.id,
@@ -68,7 +71,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Return member with roles
     const memberWithRoles = await prisma.crewMember.findUnique({
       where: { id: member.id },
       include: {
@@ -85,6 +87,8 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const body = await req.json();
 
     const member = await prisma.crewMember.update({
@@ -111,11 +115,11 @@ export async function PUT(req: NextRequest) {
     if (body.roles && body.roles.length > 0) {
       for (const [index, r] of body.roles.entries()) {
         let role = await prisma.role.findFirst({
-          where: { name: r.role, organizationId: body.organizationId },
+          where: { name: r.role, organizationId: orgId },
         });
         if (!role) {
           role = await prisma.role.create({
-            data: { name: r.role, organizationId: body.organizationId, sortOrder: index },
+            data: { name: r.role, organizationId: orgId, sortOrder: index },
           });
         }
         await prisma.crewMemberRole.create({
@@ -145,6 +149,8 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const orgId = await getOrgId();
+    if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { id } = await req.json();
     await prisma.crewMemberRole.deleteMany({ where: { crewMemberId: id } });
     await prisma.crewMember.delete({ where: { id } });

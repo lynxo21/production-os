@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Plus, X, Briefcase, Users } from "lucide-react";
 import JobForm from "@/components/jobs/JobForm";
 
-const ORG_ID = "org-after-now-001";
-
 const STATUS_LABELS: Record<string, string> = {
   DRAFT: "Draft", QUOTED: "Quoted", CONFIRMED: "Confirmed",
   IN_PROGRESS: "In Progress", WRAPPED: "Wrapped", INVOICED: "Invoiced", CANCELLED: "Cancelled",
@@ -114,7 +112,7 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
     const res = await fetch("/api/jobs", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...data, organizationId: ORG_ID }),
+      body: JSON.stringify(data),
     });
     const result = await res.json();
     setJob((prev: any) => ({ ...prev, ...result }));
