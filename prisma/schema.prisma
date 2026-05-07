@@ -1,0 +1,548 @@
+// ─────────────────────────────────────────────────────────────────
+// Production OS — Prisma Schema
+// Stack: Next.js 14 · Supabase (PostgreSQL) · Prisma · TypeScript
+// ─────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ORGANIZATIONS — multi-tenant root
+// ═══════════════════════════════════════════════════════════════════
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("starter") // starter | pro | enterprise
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users                OrganizationUser[]
+  budgetTiers          BudgetTier[]
+  tierDefaultDiscounts TierDefaultDiscount[]
+  groups               Group[]
+  items                Item[]
+  tags                 Tag[]
+  vendors              Vendor[]
+  roles                Role[]
+  crewMembers          CrewMember[]
+  clients              Client[]
+  jobs                 Job[]
+
+  @@map("organizations")
+}
+
+model OrganizationUser {
+  id             String      @id @default(uuid())
+  organizationId String      @map("organization_id")
+  userId         String      @map("user_id") // references Supabase auth.users
+  role           OrgUserRole @default(MEMBER)
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@map("organization_users")
+}
+
+enum OrgUserRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// BUDGET TIERS
+// Configurable per org. Tier 1 = low budget, Tier 5 = Hollywood.
+// Drive crew rate floors, gear discounts, and client defaults.
+// ═══════════════════════════════════════════════════════════════════
+
+model BudgetTier {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  tierNumber     Int      @map("tier_number") // 1–5 (or however many the org sets)
+  name           String   // e.g. "Low Budget", "Indie", "Commercial", "Hollywood"
+  description    String?
+  budgetMin      Decimal? @map("budget_min") // optional reference range
+  budgetMax      Decimal? @map("budget_max")
+  color          String   @default("#888888") // UI display color
+
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tierDefaultDiscounts TierDefaultDiscount[]
+  roleTierRates        RoleTierRate[]
+  crewMemberTierRates  CrewMemberTierRate[]
+  gearTierRates        GearTierRate[]
+  clientDefaults       Client[]              @relation("ClientDefaultTier")
+  crewMinimums         CrewMember[]          @relation("CrewMinimumTier")
+  jobs                 Job[]
+
+  @@unique([organizationId, tierNumber])
+  @@map("budget_tiers")
+}
+
+// Org-level fallback discount table.
+// Any gear without an explicit GearTierRate uses this discount against
+// its standard_day_rate. Set once, applies to all unpriced gear automatically.
+model TierDefaultDiscount {
+  id             String  @id @default(uuid())
+  organizationId String  @map("organization_id")
+  tierId         String  @map("tier_id")
+  discountPct    Decimal @map("discount_pct") // 0.00–1.00 (e.g. 0.50 = 50% off)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  tier         BudgetTier   @relation(fields: [tierId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, tierId])
+  @@map("tier_default_discounts")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// INVENTORY — Groups (tree) + Items + Units/Stock + Pricing
+// ═══════════════════════════════════════════════════════════════════
+
+// Self-referential tree. parent_id = null means top-level group.
+model Group {
+  id             String  @id @default(uuid())
+  organizationId String  @map("organization_id")
+  parentId       String? @map("parent_id")
+  name           String
+  sortOrder      Int     @default(0) @map("sort_order")
+
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent           Group?                @relation("GroupChildren", fields: [parentId], references: [id])
+  children         Group[]               @relation("GroupChildren")
+  primaryItems     Item[]                @relation("ItemPrimaryGroup")
+  additionalItems  ItemAdditionalGroup[]
+
+  @@map("groups")
+}
+
+model Item {
+  id                   String     @id @default(uuid())
+  organizationId       String     @map("organization_id")
+  primaryGroupId       String?    @map("primary_group_id")
+
+  // Display / search
+  name                 String
+  shortName            String?    @map("short_name")
+  shorthand            String?    // optional quick-search alias
+  size                 String?    // cable lengths, screen sizes, etc.
+  narrativeDescription String?    @map("narrative_description") @db.Text
+
+  // Financials
+  purchaseCost         Decimal?   @map("purchase_cost")
+  replacementCost      Decimal?   @map("replacement_cost")
+  standardDayRate      Decimal?   @map("standard_day_rate") // base rate; tiers discount this
+
+  // Manufacturer
+  manufacturer         String?
+  countryOfManufacture String?    @map("country_of_manufacture")
+
+  // Behavior flags
+  trackRunningHours    Boolean    @default(false) @map("track_running_hours")
+  hidden               Boolean    @default(false)
+  lineMuteDefault      Boolean    @default(false) @map("line_mute_default")
+  noteMuteDefault      Boolean    @default(false) @map("note_mute_default")
+  notes                String?    @db.Text
+
+  // Structure
+  preset               ItemPreset @default(MODEL)
+  trackedBySerial      Boolean    @default(false) @map("tracked_by_serial")
+  isUnitContainer      Boolean    @default(false) @map("is_unit_container")
+
+  active               Boolean    @default(true)
+  createdAt            DateTime   @default(now()) @map("created_at")
+  updatedAt            DateTime   @updatedAt @map("updated_at")
+
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  primaryGroup     Group?                @relation("ItemPrimaryGroup", fields: [primaryGroupId], references: [id])
+  additionalGroups ItemAdditionalGroup[]
+  tags             ItemTag[]
+  units            ItemUnit[]            // populated if trackedBySerial = true
+  stock            ItemStock?            // populated if trackedBySerial = false
+  gearTierRates    GearTierRate[]
+  lineItems        JobLineItem[]
+
+  @@map("items")
+}
+
+enum ItemPreset {
+  MODEL
+  CONTAINER
+  PACKAGE
+}
+
+// Allows an item to appear in multiple places in the inventory tree
+model ItemAdditionalGroup {
+  itemId  String @map("item_id")
+  groupId String @map("group_id")
+
+  item  Item  @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, groupId])
+  @@map("item_additional_groups")
+}
+
+model Tag {
+  id             String @id @default(uuid())
+  organizationId String @map("organization_id")
+  name           String
+  color          String @default("#888888")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  items        ItemTag[]
+
+  @@unique([organizationId, name])
+  @@map("tags")
+}
+
+model ItemTag {
+  itemId String @map("item_id")
+  tagId  String @map("tag_id")
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, tagId])
+  @@map("item_tags")
+}
+
+// One row per physical unit — only used when item.trackedBySerial = true
+model ItemUnit {
+  id            String     @id @default(uuid())
+  itemId        String     @map("item_id")
+  serialNumber  String?    @map("serial_number")
+  barcode       String?    @unique
+  condition     String?
+  purchaseDate  DateTime?  @map("purchase_date") @db.Date
+  purchasePrice Decimal?   @map("purchase_price")
+  vendor        String?
+  runningHours  Decimal    @default(0) @map("running_hours")
+  status        UnitStatus @default(AVAILABLE)
+  notes         String?    @db.Text
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@map("item_units")
+}
+
+enum UnitStatus {
+  AVAILABLE
+  OUT_ON_JOB
+  IN_REPAIR
+  RETIRED
+}
+
+// Quantity tracking — only used when item.trackedBySerial = false
+model ItemStock {
+  id                String   @id @default(uuid())
+  itemId            String   @unique @map("item_id")
+  quantityOwned     Int      @default(0) @map("quantity_owned")
+  quantityAvailable Int      @default(0) @map("quantity_available")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@map("item_stock")
+}
+
+// Per-item tier pricing. Set day_rate OR discount_pct, not both.
+// Resolution order: explicit day_rate > discount_pct calc > org tier default > standard_day_rate
+model GearTierRate {
+  id          String   @id @default(uuid())
+  itemId      String   @map("item_id")
+  tierId      String   @map("tier_id")
+  dayRate     Decimal? @map("day_rate")      // explicit override (highest priority)
+  discountPct Decimal? @map("discount_pct")  // fractional discount off standard rate
+
+  item Item       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  tier BudgetTier @relation(fields: [tierId], references: [id], onDelete: Cascade)
+
+  @@unique([itemId, tierId])
+  @@map("gear_tier_rates")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// VENDORS — external rental houses and suppliers
+// ═══════════════════════════════════════════════════════════════════
+
+model Vendor {
+  id             String  @id @default(uuid())
+  organizationId String  @map("organization_id")
+  name           String
+  contactName    String? @map("contact_name")
+  email          String?
+  phone          String?
+  website        String?
+  notes          String? @db.Text
+  active         Boolean @default(true)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lineItemSources JobLineItemSource[]
+
+  @@map("vendors")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CREW — roles, members, rate tiers, availability
+// ═══════════════════════════════════════════════════════════════════
+
+model Role {
+  id             String  @id @default(uuid())
+  organizationId String  @map("organization_id")
+  name           String  // e.g. "Director of Photography", "Camera Operator", "AC"
+  department     String? // e.g. "Camera", "Audio", "Production"
+  sortOrder      Int     @default(0) @map("sort_order")
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  crewMemberRoles CrewMemberRole[]
+  roleTierRates   RoleTierRate[]
+  jobCrew         JobCrew[]
+
+  @@unique([organizationId, name])
+  @@map("roles")
+}
+
+model CrewMember {
+  id              String    @id @default(uuid())
+  organizationId  String    @map("organization_id")
+  minimumTierId   String?   @map("minimum_tier_id") // won't accept jobs below this tier
+  firstName       String    @map("first_name")
+  lastName        String    @map("last_name")
+  email           String?
+  phone           String?
+  type            CrewType  @default(FREELANCE)
+  standardDayRate Decimal?  @map("standard_day_rate") // flat fallback rate
+  overtimeRate    Decimal?  @map("overtime_rate")
+  unionStatus     String?   @map("union_status")
+  notes           String?   @db.Text
+  location         String?
+  workedWithBefore Boolean @default(false) @map("worked_with_before")
+  hiredBefore      Boolean @default(false) @map("hired_before")
+  tierFloor        Int?      @map("tier_floor")
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  minimumTier  BudgetTier?          @relation("CrewMinimumTier", fields: [minimumTierId], references: [id])
+  roles        CrewMemberRole[]
+  tierRates    CrewMemberTierRate[]
+  jobCrew      JobCrew[]
+
+  @@map("crew_members")
+}
+
+enum CrewType {
+  IN_HOUSE
+  FREELANCE
+}
+
+// Many-to-many crew ↔ role with priority ranking
+// is_primary = true → appears in primary tier of role search results
+// sort_order = rank within secondary skills (lower = higher preference)
+// rate_override = different rate when filling THIS specific role
+model CrewMemberRole {
+  crewMemberId String   @map("crew_member_id")
+  roleId       String   @map("role_id")
+  isPrimary    Boolean  @default(false) @map("is_primary")
+  sortOrder    Int      @default(0) @map("sort_order")
+  rateOverride Decimal? @map("rate_override")
+
+  crewMember CrewMember @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([crewMemberId, roleId])
+  @@map("crew_member_roles")
+}
+
+// Role-level tier rates — base rate for a role at each budget tier
+// e.g. Cam Op: T1=$250, T2=$400, T3=$600, T4=$800, T5=$1000
+model RoleTierRate {
+  roleId  String  @map("role_id")
+  tierId  String  @map("tier_id")
+  dayRate Decimal @map("day_rate")
+
+  role Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  tier BudgetTier @relation(fields: [tierId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, tierId])
+  @@map("role_tier_rates")
+}
+
+// Individual crew override — takes priority over RoleTierRate
+// Use when a specific person commands a different rate than the role default
+model CrewMemberTierRate {
+  crewMemberId String  @map("crew_member_id")
+  tierId       String  @map("tier_id")
+  dayRate      Decimal @map("day_rate")
+
+  crewMember CrewMember @relation(fields: [crewMemberId], references: [id], onDelete: Cascade)
+  tier       BudgetTier @relation(fields: [tierId], references: [id], onDelete: Cascade)
+
+  @@id([crewMemberId, tierId])
+  @@map("crew_member_tier_rates")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CLIENTS
+// ═══════════════════════════════════════════════════════════════════
+
+model Client {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  defaultTierId  String?  @map("default_tier_id") // auto-fills on new job creation
+  name           String
+  contactName    String?  @map("contact_name")
+  email          String?
+  phone          String?
+  company        String?
+  billingAddress String?  @map("billing_address") @db.Text
+  notes          String?  @db.Text
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  defaultTier  BudgetTier?  @relation("ClientDefaultTier", fields: [defaultTierId], references: [id])
+  jobs         Job[]
+
+  @@map("clients")
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// JOBS — the central entity linking all modules
+// ═══════════════════════════════════════════════════════════════════
+
+model Job {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  clientId       String?   @map("client_id")
+  tierId         String?   @map("tier_id") // drives all rate resolution on this job
+  name           String
+  jobNumber      String?   @map("job_number") // optional human-readable ID
+  status         JobStatus @default(DRAFT)
+  startDate      DateTime? @map("start_date") @db.Date
+  endDate        DateTime? @map("end_date") @db.Date
+  shootDays      Int?      @map("shoot_days")
+  location       String?
+  notes          String?   @db.Text
+  internalNotes  String?   @map("internal_notes") @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client?       @relation(fields: [clientId], references: [id])
+  tier         BudgetTier?   @relation(fields: [tierId], references: [id])
+  lineItems    JobLineItem[]
+  crew         JobCrew[]
+
+  @@map("jobs")
+}
+
+enum JobStatus {
+  DRAFT
+  QUOTED
+  CONFIRMED
+  IN_PROGRESS
+  WRAPPED
+  INVOICED
+  CANCELLED
+}
+
+// ─── Job Line Items (gear) ────────────────────────────────────────
+// One row per gear line on the job. quantity_requested is what the
+// client sees. Sources rows break down how that quantity is fulfilled.
+
+model JobLineItem {
+  id                Int          @id @default(autoincrement())
+  jobId             String       @map("job_id")
+  itemId            String?      @map("item_id")
+  displayName       String       @map("display_name") // what prints on quote
+  quantityRequested Int          @map("quantity_requested")
+  dayRate           Decimal?     @map("day_rate")     // resolved at booking time
+  days              Int          @default(1)
+  replacementCost   Decimal?     @map("replacement_cost")
+  lineMuted         Boolean      @default(false) @map("line_muted")
+  noteMuted         Boolean      @default(false) @map("note_muted")
+  notes             String?      @db.Text
+  sortOrder         Int          @default(0) @map("sort_order")
+
+  job     Job                @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  item    Item?              @relation(fields: [itemId], references: [id])
+  sources JobLineItemSource[]
+
+  @@map("job_line_items")
+}
+
+// Sourcing breakdown for a line item.
+// A single line of 3× FX6 might have:
+//   { source_type: OWNED,  quantity: 1 }
+//   { source_type: RENTED, quantity: 2, vendor_id: ..., vendor_cost_per_day: 250 }
+// The quote shows 3× FX6. The P&L sees the vendor cost internally.
+model JobLineItemSource {
+  id               String     @id @default(uuid())
+  lineItemId       Int        @map("line_item_id")
+  sourceType       SourceType @map("source_type")
+  quantity         Int
+  vendorId         String?    @map("vendor_id")
+  vendorCostPerDay Decimal?   @map("vendor_cost_per_day")
+  vendorTotalCost  Decimal?   @map("vendor_total_cost")
+  conflictJobId    String?    @map("conflict_job_id") // set when source is blocked by another job
+  notes            String?    @db.Text
+
+  lineItem JobLineItem @relation(fields: [lineItemId], references: [id], onDelete: Cascade)
+  vendor   Vendor?     @relation(fields: [vendorId], references: [id])
+
+  @@map("job_line_item_sources")
+}
+
+enum SourceType {
+  OWNED        // from own inventory, available
+  RENTED       // rented in from external vendor
+  SUBSTITUTED  // swapped for a different item
+  CONFLICTED   // owned but blocked by another job (surfaced for visibility)
+}
+
+// ─── Job Crew ─────────────────────────────────────────────────────
+// One row per crew slot on the job. crew_member_id can be null for
+// open slots (role needed, person TBD).
+
+model JobCrew {
+  id           String     @id @default(uuid())
+  jobId        String     @map("job_id")
+  crewMemberId String?    @map("crew_member_id") // null = open slot
+  roleId       String     @map("role_id")
+  sourceType   CrewSource @default(IN_HOUSE) @map("source_type")
+  startDate    DateTime?  @map("start_date") @db.Date
+  endDate      DateTime?  @map("end_date") @db.Date
+  agreedRate   Decimal?   @map("agreed_rate") // locked in at booking time
+  status       CrewStatus @default(PENDING)
+  notes        String?    @db.Text
+
+  job        Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  crewMember CrewMember? @relation(fields: [crewMemberId], references: [id])
+  role       Role        @relation(fields: [roleId], references: [id])
+
+  @@map("job_crew")
+}
+
+enum CrewSource {
+  IN_HOUSE
+  FREELANCE
+}
+
+enum CrewStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
+  WRAPPED
+}
