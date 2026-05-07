@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useRef, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import ItemForm from "@/components/inventory/ItemForm";
 
 const ORG_ID = "org-after-now-001";
@@ -12,8 +12,10 @@ interface ContextMenu {
   item: any;
 }
 
-export default function InventoryPage() {
+function InventoryPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedGroup = searchParams.get("group");
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState<any | null>(null);
   const [items, setItems] = useState<any[]>([]);
@@ -28,7 +30,8 @@ export default function InventoryPage() {
     else { setSortKey(key); setSortDir("asc"); }
   };
 
-  const sorted = [...items].sort((a, b) => {
+  const filtered = selectedGroup ? items.filter(i => i.primaryGroupId === selectedGroup) : items;
+  const sorted = [...filtered].sort((a, b) => {
     const aVal = String(a[sortKey] ?? "");
     const bVal = String(b[sortKey] ?? "");
     const cmp = aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: "base" });
@@ -112,7 +115,7 @@ export default function InventoryPage() {
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: "#f0f0f0", marginBottom: 4 }}>Inventory</h1>
           <p style={{ fontSize: 14, color: "#666" }}>
-            {items.length} {items.length === 1 ? "item" : "items"} in your gear catalog
+            {filtered.length} {filtered.length === 1 ? "item" : "items"}{selectedGroup ? " in this group" : " in your gear catalog"}
           </p>
         </div>
         <button
@@ -126,7 +129,7 @@ export default function InventoryPage() {
       {/* Table */}
       {loading ? (
         <div style={{ color: "#666", fontSize: 14, textAlign: "center", padding: "48px 0" }}>Loading...</div>
-      ) : items.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div style={{ background: "#161616", border: "1px solid #242424", borderRadius: 8, padding: "64px 32px", textAlign: "center" }}>
           <p style={{ color: "#555", fontSize: 14 }}>No gear yet — add your first item</p>
         </div>
@@ -189,7 +192,7 @@ export default function InventoryPage() {
 
           {/* Footer */}
           <div style={{ padding: "10px 20px", borderTop: "1px solid #1e1e1e", background: "#111", fontSize: 12, color: "#444" }}>
-            {items.length} {items.length === 1 ? "item" : "items"}
+            {sorted.length} {sorted.length === 1 ? "item" : "items"}
           </div>
         </div>
       )}
@@ -249,5 +252,13 @@ export default function InventoryPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function InventoryPage() {
+  return (
+    <Suspense fallback={null}>
+      <InventoryPageInner />
+    </Suspense>
   );
 }
