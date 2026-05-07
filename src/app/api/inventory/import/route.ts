@@ -2,39 +2,109 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getOrgId } from "@/lib/getOrgId";
 
+function hasUnitData(row: Record<string, string | null | undefined>): boolean {
+  return !!(row.serial_number || row.unit_id || row.purchase_date || row.purchase_price || row.vendor || row.condition);
+}
+
+async function generateUnitId(orgId: string, prefix: string): Promise<string> {
+  const existing = await prisma.itemUnit.findMany({
+    where: { item: { organizationId: orgId }, barcode: { startsWith: `${prefix}-` } },
+    select: { barcode: true },
+  });
+  const nums = existing
+    .map(u => parseInt(u.barcode!.slice(prefix.length + 1)))
+    .filter(n => !isNaN(n) && n > 0);
+  const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+  return `${prefix}-${String(next).padStart(5, "0")}`;
+}
+
 export async function POST(req: NextRequest) {
   const orgId = await getOrgId();
   if (!orgId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { items } = await req.json();
-  let success = 0, failed = 0;
-  const errors: string[] = [];
+  const { rows } = await req.json();
 
-  for (const item of items) {
-    try {
-      await prisma.item.create({
+  const org = await prisma.organization.findUnique({ where: { id: orgId }, select: { settings: true } });
+  const unitIdPrefix = (org?.settings as any)?.unitIdPrefix || "UNIT";
+
+  let modelsCreated = 0;
+  let modelsUpdated = 0;
+  let unitsAdded = 0;
+  let rowsSkipped = 0;
+
+  // Group rows by model name (preserve order)
+  const grouped = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const name = String(row.name || "").trim();
+    if (!name) { rowsSkipped++; continue; }
+    if (!grouped.has(name)) grouped.set(name, []);
+    grouped.get(name)!.push(row);
+  }
+
+  for (const [modelName, modelRows] of grouped.entries()) {
+    const firstRow = modelRows[0];
+
+    // Find or create the item
+    let item = await prisma.item.findFirst({ where: { organizationId: orgId, name: modelName } });
+
+    if (!item) {
+      const preset = String(firstRow.category || "").toUpperCase();
+      item = await prisma.item.create({
         data: {
           organizationId: orgId,
-          name: item.name,
-          preset: ["MODEL", "CONTAINER", "PACKAGE"].includes(item.preset) ? item.preset : "MODEL",
-          shortName: item.shortName || null,
-          shorthand: item.shorthand || null,
-          manufacturer: item.manufacturer || null,
-          standardDayRate: item.standardDayRate || null,
-          replacementCost: item.replacementCost || null,
-          size: item.size || null,
-          narrativeDescription: item.narrativeDescription || null,
-          purchaseCost: item.purchaseCost || null,
-          countryOfManufacture: item.countryOfManufacture || null,
-          notes: item.notes || null,
+          name: modelName,
+          preset: ["MODEL", "CONTAINER", "PACKAGE"].includes(preset) ? (preset as "MODEL" | "CONTAINER" | "PACKAGE") : "MODEL",
+          shortName: firstRow.short_name || null,
+          shorthand: firstRow.shorthand || null,
+          manufacturer: firstRow.manufacturer || null,
+          standardDayRate: firstRow.day_rate ? parseFloat(firstRow.day_rate) : null,
+          replacementCost: firstRow.replacement_cost ? parseFloat(firstRow.replacement_cost) : null,
+          size: firstRow.size || null,
+          narrativeDescription: firstRow.narrative_description || null,
+          purchaseCost: firstRow.purchase_cost ? parseFloat(firstRow.purchase_cost) : null,
+          countryOfManufacture: firstRow.country_of_manufacture || null,
+          notes: firstRow.notes || null,
         },
       });
-      success++;
-    } catch (e) {
-      failed++;
-      errors.push(`Row "${item.name}": ${String(e)}`);
+      modelsCreated++;
+    } else {
+      modelsUpdated++;
+    }
+
+    // Create units for rows that have unit data
+    for (const row of modelRows) {
+      if (!hasUnitData(row)) continue;
+
+      // Skip if serial already exists for this org
+      if (row.serial_number) {
+        const dupe = await prisma.itemUnit.findFirst({
+          where: { serialNumber: row.serial_number, item: { organizationId: orgId } },
+        });
+        if (dupe) { rowsSkipped++; continue; }
+      }
+
+      const barcodeValue = row.unit_id || await generateUnitId(orgId, unitIdPrefix);
+
+      let purchaseDate: Date | null = null;
+      if (row.purchase_date) {
+        const d = new Date(row.purchase_date);
+        if (!isNaN(d.getTime())) purchaseDate = d;
+      }
+
+      await prisma.itemUnit.create({
+        data: {
+          itemId: item.id,
+          serialNumber: row.serial_number || null,
+          barcode: barcodeValue,
+          condition: row.condition || "Excellent",
+          purchaseDate,
+          purchasePrice: row.purchase_price ? parseFloat(row.purchase_price) : null,
+          vendor: row.vendor || null,
+        },
+      });
+      unitsAdded++;
     }
   }
 
-  return NextResponse.json({ success, failed, errors });
+  return NextResponse.json({ modelsCreated, modelsUpdated, unitsAdded, rowsSkipped });
 }
